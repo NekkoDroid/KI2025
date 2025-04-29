@@ -1,11 +1,6 @@
 from dataclasses import dataclass
 import enum
-import logging
-from typing import Optional
-
-LOGGER = logging.getLogger(__name__)
-LOGGER.setLevel(logging.DEBUG)
-LOGGER.addHandler(logging.StreamHandler())
+from typing import Callable, Optional
 
 MIN_PLAYERS: int = 2
 MAX_PLAYERS: int = 4
@@ -61,7 +56,7 @@ class Board:
     def __init__(self) -> None:
         self.pieces = tuple(Piece(id=index // MAX_PLAYERS) for index in range(MAX_PLAYERS * PIECES_PER_PLAYER))
 
-    def print(self, view_id: int) -> None:
+    def print(self, view_id: int, log: Callable[[str], None] = print) -> None:
         home = ""
         for _ in range(MAX_PLAYERS):
             fields = list("-" * PIECES_PER_PLAYER)
@@ -91,9 +86,9 @@ class Board:
             target += section.ljust(TRANSIT_FIELDS // MAX_PLAYERS)
             view_id = (view_id + 1) % MAX_PLAYERS
 
-        LOGGER.debug(f"home:    {home}")
-        LOGGER.debug(f"transit: {transit}")
-        LOGGER.debug(f"target:  {target}")
+        log(f"home:    {home}")
+        log(f"transit: {transit}")
+        log(f"target:  {target}")
 
         pass
 

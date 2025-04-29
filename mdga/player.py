@@ -21,15 +21,18 @@ class Player(ABC):
         pieces = filter(is_valid_move, pieces)
         return tuple(pieces)
 
+    def __str__(self) -> str:
+        return self.__class__.__name__
+
 
 class MoveFirstPlayer(Player):
     def select_move(self, board: Board, id: int, roll: int) -> Piece:
-        return sorted(self.valid_moves(board, id, roll), key=board.distance)[0]
+        return sorted(self.valid_moves(board, id, roll), key=board.distance)[-1]
 
 
 class MoveLastPlayer(Player):
     def select_move(self, board: Board, id: int, roll: int) -> Piece:
-        return sorted(self.valid_moves(board, id, roll), key=board.distance)[-1]
+        return sorted(self.valid_moves(board, id, roll), key=board.distance)[0]
 
 
 class MoveRandomPlayer(Player):
@@ -65,6 +68,9 @@ class MoveKnockoutPlayer(MoveRandomPlayer):
             return self.random.choice(knockout_moves)
         except IndexError:
             return self.parent.select_move(board, id, roll)
+
+    def __str__(self) -> str:
+        return f"{super().__str__()}({self.parent})"
 
 
 class NeuralNetworkPlayer(Player):

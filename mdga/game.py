@@ -1,4 +1,5 @@
 import logging
+import os
 from random import Random
 from typing import Optional
 from mdga.board import MAX_PLAYERS, MAX_ROLL, MIN_PLAYERS, MIN_ROLL, Board, PieceState
@@ -6,7 +7,7 @@ from mdga.player import Player
 
 
 LOGGER = logging.getLogger(__name__)
-LOGGER.setLevel(logging.DEBUG)
+LOGGER.setLevel(os.getenv("LOG_LEVEL", "debug").upper())
 LOGGER.addHandler(logging.StreamHandler())
 
 
@@ -29,10 +30,14 @@ class Game:
         self.random = random
 
     def play(self) -> Player:
+        LOGGER.info("Players:")
+        for id, player in enumerate(self.players):
+            LOGGER.info(f"  {id}: {player}")
+
         while self.winner is None:
             self.play_round()
 
-        LOGGER.critical(f"We have a winner: Player {self.players.index(self.winner)}")
+        LOGGER.info(f"We have a winner: Player {self.players.index(self.winner)}")
         return self.winner
 
     def play_round(self) -> None:
@@ -41,25 +46,23 @@ class Game:
             if self.winner is not None:
                 break
 
-            roll = self.random.randint(MIN_ROLL, MAX_ROLL)
-            LOGGER.debug(f"Player {id} rolled a {roll}")
-
             # NOTE: For now we don't enforce that all 6 rolls need to clear out the home area this is to allow a bit
             # more freedom to the AI and see how it evolves. At a later point it might make sense to implement that we
             # force move from the home area, but that will be decided later on.
+            roll = self.random.randint(MIN_ROLL, MAX_ROLL)
 
             try:
                 target = player.select_move(self.board, id, roll)
                 assert target.id == id
 
-                LOGGER.info(f"\tMoving piece from {target}")
+                LOGGER.info(f"Player {id} moving piece from {target.position} by {roll}")
                 self.board.move(target, roll)
 
             except LookupError:
-                LOGGER.warning("\tNo available moves, passing.")
+                LOGGER.warning(f"Player {id} has no available moves, passing.")
 
             # When all pieces of a specific ID are in the target state we have a winner
             if all(piece.state == PieceState.target for piece in self.board.filter(id=id)):
                 self.winner = player
 
-            self.board.print(id)
+            self.board.print(id, LOGGER.debug)
