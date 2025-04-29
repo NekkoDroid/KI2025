@@ -62,5 +62,4 @@ class Game:
             if all(piece.state == PieceState.target for piece in self.board.filter(id=id)):
                 self.winner = player
 
-    def print(self) -> None:
-        raise NotImplementedError()
+            self.board.print(id)

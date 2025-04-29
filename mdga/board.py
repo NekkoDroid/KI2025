@@ -1,6 +1,11 @@
 from dataclasses import dataclass
 import enum
+import logging
 from typing import Optional
+
+LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(logging.DEBUG)
+LOGGER.addHandler(logging.StreamHandler())
 
 MIN_PLAYERS: int = 2
 MAX_PLAYERS: int = 4
@@ -56,7 +61,40 @@ class Board:
     def __init__(self) -> None:
         self.pieces = tuple(Piece(id=index // MAX_PLAYERS) for index in range(MAX_PLAYERS * PIECES_PER_PLAYER))
 
-    def print(self) -> None:
+    def print(self, view_id: int) -> None:
+        home = ""
+        for _ in range(MAX_PLAYERS):
+            fields = list("-" * PIECES_PER_PLAYER)
+            for index, piece in enumerate(self.filter(id=view_id, state=PieceState.home)):
+                assert piece.position is None
+                fields[index] = str(piece)
+
+            section = "".join(fields)
+            home += section.ljust(TRANSIT_FIELDS // MAX_PLAYERS)
+            view_id = (view_id + 1) % MAX_PLAYERS
+
+        fields = list("*" * TRANSIT_FIELDS)
+        for piece in self.filter(state=PieceState.transit):
+            assert piece.position is not None
+            # We make use of negative indexing to index from the end when going negative
+            fields[piece.position - FIELD_ENTRANCE[view_id]] = str(piece)
+        transit = "".join(fields)
+
+        target = ""
+        for _ in range(MAX_PLAYERS):
+            fields = list("~" * PIECES_PER_PLAYER)
+            for piece in self.filter(id=view_id, state=PieceState.target):
+                assert piece.position is not None
+                fields[-(piece.position + 1)] = str(piece)
+
+            section = "".join(fields)
+            target += section.ljust(TRANSIT_FIELDS // MAX_PLAYERS)
+            view_id = (view_id + 1) % MAX_PLAYERS
+
+        LOGGER.debug(f"home:    {home}")
+        LOGGER.debug(f"transit: {transit}")
+        LOGGER.debug(f"target:  {target}")
+
         pass
 
     def assert_uniqueness(self) -> None:
