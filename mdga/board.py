@@ -75,30 +75,27 @@ class Board:
         assert piece in self.pieces
         assert MIN_ROLL <= roll <= MAX_ROLL
 
-        match piece.state:
-            case PieceState.home:
-                if roll != MAX_ROLL:
-                    raise InvalidMoveError("Attempting to move out of home without a 6")
+        if piece.position is None:
+            if roll != MAX_ROLL:
+                raise InvalidMoveError("Attempting to move out of home without a 6")
 
-                newpos = FIELD_ENTRANCE[piece.id]
+            newpos = FIELD_ENTRANCE[piece.id]
 
-            case PieceState.transit:
-                assert piece.position is not None
-                newpos = piece.position
+        elif piece.position < 0:
+            newpos = piece.position - roll
 
-                for _ in range(roll):
-                    if newpos == TARGET_ENTRANCE[piece.id]:
-                        newpos = -1 # The target fields are indexed as negative numbers
+        else:
+            newpos = piece.position
 
-                    elif newpos < 0:
-                        newpos -= 1
+            for _ in range(roll):
+                if newpos == TARGET_ENTRANCE[piece.id]:
+                    newpos = -1  # The target fields are indexed as negative numbers
 
-                    else:
-                        newpos = (newpos + 1) % TRANSIT_FIELDS
+                elif newpos < 0:
+                    newpos -= 1
 
-            case PieceState.target:
-                assert piece.position is not None
-                newpos = piece.position - roll
+                else:
+                    newpos = (newpos + 1) % TRANSIT_FIELDS
 
         if newpos < -PIECES_PER_PLAYER:
             raise InvalidMoveError("Attempting to move too deep into the target area")
