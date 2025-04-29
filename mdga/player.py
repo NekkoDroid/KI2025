@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import random
+from random import Random
 
 from mdga.board import Board, InvalidMoveError, Piece
 
@@ -33,8 +33,13 @@ class MoveLastPlayer(Player):
 
 
 class MoveRandomPlayer(Player):
+    random: Random
+
+    def __init__(self, random: Random = Random()) -> None:
+        self.random = random
+
     def select_move(self, board: Board, id: int, roll: int) -> Piece:
-        return random.choice(self.valid_moves(board, id, roll))
+        return self.random.choice(self.valid_moves(board, id, roll))
 
 
 class NeuralNetworkPlayer(Player):

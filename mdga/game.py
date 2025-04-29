@@ -1,5 +1,5 @@
 import logging
-import random
+from random import Random
 from typing import Optional
 from mdga.board import MAX_PLAYERS, MAX_ROLL, MIN_PLAYERS, MIN_ROLL, Board, PieceState
 from mdga.player import Player
@@ -12,16 +12,21 @@ LOGGER.addHandler(logging.StreamHandler())
 
 class Game:
     board: Board
-    players: tuple[Player, ...]
     winner: Optional[Player]
+    players: tuple[Player, ...]
+    random: Random
 
-    def __init__(self, *players: Player) -> None:
+    # NOTE: this default random parameter is shared between all instances of Game
+    # Usually this isn't desirable, but in this case it doesn't matter
+    def __init__(self, *players: Player, random: Random = Random()) -> None:
         # We only support 2-4 players, the board should be able to handle any number of players
         assert MIN_PLAYERS <= len(players) <= MAX_PLAYERS
 
         self.board = Board()
-        self.players = players
         self.winner = None
+
+        self.players = players
+        self.random = random
 
     def play(self) -> Player:
         while self.winner is None:
@@ -36,8 +41,7 @@ class Game:
             if self.winner is not None:
                 break
 
-            # TODO: Take random instance for more determinism?
-            roll = random.randint(MIN_ROLL, MAX_ROLL)
+            roll = self.random.randint(MIN_ROLL, MAX_ROLL)
             LOGGER.debug(f"Player {id} rolled a {roll}")
 
             # NOTE: For now we don't enforce that all 6 rolls need to clear out the home area this is to allow a bit
