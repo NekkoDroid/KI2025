@@ -119,6 +119,24 @@ class Board:
         piece.position = newpos
         self.assert_uniqueness()
 
+    def distance(self, piece: Piece) -> int:
+        if piece.position is None:
+            return 0
+
+        if piece.position < 0:
+            # We arrived in the target fields and since they are negative we need to add them to the total
+            # transit field count, so we have to subtract the negative value it contains
+            return TRANSIT_FIELDS - piece.position
+
+        # Since we have a distance of 0 when we are in the home fields we start with a distance of 1 when we are on the
+        # entrance field. And for each field that we aren't on after that we increase the distance by 1
+        rv = 1
+        pos = FIELD_ENTRANCE[piece.id]
+        while pos != piece.position:
+            rv += 1
+            pos = (pos + 1) % TRANSIT_FIELDS
+
+        return rv
 
     def filter(
         self,

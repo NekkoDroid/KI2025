@@ -1,15 +1,29 @@
+from random import Random
 import sys
+from typing import Callable
 
 from mdga.game import Game
-from mdga.player import MoveRandomPlayer
+from mdga.player import MoveFirstPlayer, MoveKnockoutPlayer, MoveLastPlayer, MoveRandomPlayer, Player
 
 
 def main() -> None:
+    random = Random()
+
+    PLAYER_TYPES: list[Callable[[], Player]] = [
+        MoveFirstPlayer,
+        MoveLastPlayer,
+        lambda: MoveRandomPlayer(random),
+        lambda: MoveKnockoutPlayer(MoveFirstPlayer(), random),
+        lambda: MoveKnockoutPlayer(MoveLastPlayer(), random),
+        lambda: MoveKnockoutPlayer(MoveRandomPlayer(random), random),
+    ]
+
     Game(
-        MoveRandomPlayer(),
-        MoveRandomPlayer(),
-        MoveRandomPlayer(),
-        MoveRandomPlayer(),
+        random.choice(PLAYER_TYPES)(),
+        random.choice(PLAYER_TYPES)(),
+        random.choice(PLAYER_TYPES)(),
+        random.choice(PLAYER_TYPES)(),
+        random=random
     ).play()
 
 

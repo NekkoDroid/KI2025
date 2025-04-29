@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from random import Random
 
-from mdga.board import Board, InvalidMoveError, Piece
+from mdga.board import Board, InvalidMoveError, Piece, PieceState
 
 
 class Player(ABC):
@@ -24,12 +24,12 @@ class Player(ABC):
 
 class MoveFirstPlayer(Player):
     def select_move(self, board: Board, id: int, roll: int) -> Piece:
-        raise NotImplementedError()
+        return sorted(self.valid_moves(board, id, roll), key=board.distance)[0]
 
 
 class MoveLastPlayer(Player):
     def select_move(self, board: Board, id: int, roll: int) -> Piece:
-        raise NotImplementedError()
+        return sorted(self.valid_moves(board, id, roll), key=board.distance)[-1]
 
 
 class MoveRandomPlayer(Player):
@@ -40,6 +40,31 @@ class MoveRandomPlayer(Player):
 
     def select_move(self, board: Board, id: int, roll: int) -> Piece:
         return self.random.choice(self.valid_moves(board, id, roll))
+
+
+class MoveKnockoutPlayer(MoveRandomPlayer):
+    parent: Player
+    random: Random
+
+    def __init__(self, parent: Player, random: Random = Random()) -> None:
+        self.parent = parent
+        self.random = random
+
+    def select_move(self, board: Board, id: int, roll: int) -> Piece:
+        def is_knockout(piece: Piece) -> bool:
+            if piece.state != PieceState.transit:
+                return False
+
+            # We can safely assume that none of the pieces on the target position are from the current ID
+            return any(board.filter(position=board.simulate_move(piece, roll)))
+
+        valid_moves = self.valid_moves(board, id, roll)
+        knockout_moves = tuple(filter(is_knockout, valid_moves))
+
+        try:
+            return self.random.choice(knockout_moves)
+        except IndexError:
+            return self.parent.select_move(board, id, roll)
 
 
 class NeuralNetworkPlayer(Player):
