@@ -1,0 +1,144 @@
+from dataclasses import dataclass
+import enum
+from typing import Optional
+
+MIN_PLAYERS: int = 2
+MAX_PLAYERS: int = 4
+PIECES_PER_PLAYER: int = 4
+
+MIN_ROLL: int = 1
+MAX_ROLL: int = 6
+
+# Fields on which each index places their piece once leaving the home area
+FIELD_ENTRANCE: list[int] = [0, 10, 20, 30]
+
+# Fields on which each index starts entering their target area
+TARGET_ENTRANCE: list[int] = [39, 9, 19, 29]
+
+# How many transit field count
+TRANSIT_FIELDS: int = 40
+
+
+class PieceState(enum.StrEnum):
+    home = enum.auto()
+    transit = enum.auto()
+    target = enum.auto()
+
+
+@dataclass
+class Piece:
+    id: int
+    position: Optional[int] = None
+
+    def __str__(self) -> str:
+        return str(self.id)
+
+    @property
+    def state(self) -> PieceState:
+        if self.position is None:
+            return PieceState.home
+
+        if self.position < 0:
+            assert self.position >= -PIECES_PER_PLAYER
+            return PieceState.target
+
+        assert self.position < TRANSIT_FIELDS
+        return PieceState.transit
+
+
+class InvalidMoveError(RuntimeError):
+    pass
+
+
+class Board:
+    pieces: tuple[Piece, ...]
+
+    def __init__(self) -> None:
+        self.pieces = tuple(Piece(id=index // MAX_PLAYERS) for index in range(MAX_PLAYERS * PIECES_PER_PLAYER))
+
+    def print(self) -> None:
+        pass
+
+    def assert_uniqueness(self) -> None:
+        occupied: set[int] = set()
+
+        for piece in self.pieces:
+            # Only pieces that are in transit have any meaningful position that they can share with other pieces
+            if piece.state != PieceState.transit:
+                continue
+
+            assert piece.position is not None
+            assert piece.position not in occupied
+            occupied.add(piece.position)
+
+    def simulate_move(self, piece: Piece, roll: int) -> int:
+        assert piece in self.pieces
+        assert MIN_ROLL <= roll <= MAX_ROLL
+
+        match piece.state:
+            case PieceState.home:
+                if roll != MAX_ROLL:
+                    raise InvalidMoveError("Attempting to move out of home without a 6")
+
+                newpos = FIELD_ENTRANCE[piece.id]
+
+            case PieceState.transit:
+                assert piece.position is not None
+                newpos = piece.position
+
+                for _ in range(roll):
+                    if newpos == TARGET_ENTRANCE[piece.id]:
+                        newpos = -1 # The target fields are indexed as negative numbers
+
+                    elif newpos < 0:
+                        newpos -= 1
+
+                    else:
+                        newpos = (newpos + 1) % TRANSIT_FIELDS
+
+            case PieceState.target:
+                assert piece.position is not None
+                newpos = piece.position - roll
+
+        if newpos < -PIECES_PER_PLAYER:
+            raise InvalidMoveError("Attempting to move too deep into the target area")
+
+        if any(self.filter(id=piece.id, position=newpos)):
+            raise InvalidMoveError("Attempting to move onto our own piece")
+
+        return newpos
+
+    def move(self, piece: Piece, roll: int) -> None:
+        newpos = self.simulate_move(piece, roll)
+
+        # We are only able to knock out pieces that are in transit. Any pieces on home or target fields are protected
+        # TODO: We probably should also ensure that at maximum a single piece is found at this position
+        for other in self.filter(position=newpos, state=PieceState.transit):
+            # If the simulated move returns successfully we can assume that we aren't moving on to one of our own pieces
+            # so we can assume that the filter will not return any with the current piece ID.
+            assert other.id != piece.id
+            other.position = None
+
+        piece.position = newpos
+        self.assert_uniqueness()
+
+
+    def filter(
+        self,
+        *,
+        id: Optional[int] = None,
+        position: Optional[int] = None,
+        state: Optional[PieceState] = None,
+    ) -> tuple[Piece, ...]:
+        pieces = self.pieces
+
+        if id is not None:
+            pieces = filter(lambda piece: piece.id == id, pieces)
+
+        if position is not None:
+            pieces = filter(lambda piece: piece.position == position, pieces)
+
+        if state is not None:
+            pieces = filter(lambda piece: piece.state == state, pieces)
+
+        return tuple(pieces)
