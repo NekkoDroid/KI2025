@@ -1,6 +1,7 @@
 import logging
 import os
 from random import Random
+import sys
 from typing import Optional
 from mdga.board import MAX_PLAYERS, MAX_ROLL, MIN_PLAYERS, MIN_ROLL, Board, PieceState
 from mdga.player import Player
@@ -8,7 +9,7 @@ from mdga.player import Player
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(os.getenv("LOG_LEVEL", "debug").upper())
-LOGGER.addHandler(logging.StreamHandler())
+LOGGER.addHandler(logging.StreamHandler(sys.stdout))
 
 
 class Game:
