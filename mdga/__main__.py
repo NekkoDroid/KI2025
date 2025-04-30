@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from collections import Counter
 
 from mdga.game import Game
-from mdga.player import MoveFirstPlayer, MoveKnockoutPlayer, MoveLastPlayer, MoveRandomPlayer, Player
+from mdga.player import MoveFirstPlayer, MoveKnockoutPlayer, MoveLastPlayer, MoveRandomPlayer, Player, MoveRulesPlayer
 
 
 def update_plot(winners: Counter, fig: Figure, plot) -> None:
@@ -24,13 +24,13 @@ def update_plot(winners: Counter, fig: Figure, plot) -> None:
     fig.tight_layout()
 
 
-
 def main() -> None:
     random = Random()
 
     PLAYER_TYPES: list[Callable[[], Player]] = [
         MoveFirstPlayer,
         MoveLastPlayer,
+        MoveRulesPlayer,
         lambda: MoveRandomPlayer(random),
         lambda: MoveKnockoutPlayer(random),
     ]
