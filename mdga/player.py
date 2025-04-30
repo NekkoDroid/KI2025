@@ -46,19 +46,14 @@ class MoveRandomPlayer(Player):
 
 
 class MoveKnockoutPlayer(MoveRandomPlayer):
-    parent: Player
-    random: Random
-
-    def __init__(self, parent: Player, random: Random = Random()) -> None:
-        self.parent = parent
-        self.random = random
-
     def select_move(self, board: Board, id: int, roll: int) -> Piece:
         def is_knockout(piece: Piece) -> bool:
-            if piece.state != PieceState.transit:
+            # Only valid moves from home to transit or transit to transit can knock out pieces
+            if piece.state == PieceState.target:
                 return False
 
             # We can safely assume that none of the pieces on the target position are from the current ID
+            # since such a move would be an invalid move and shouldn't be passed to this function
             return any(board.filter(position=board.simulate_move(piece, roll)))
 
         valid_moves = self.valid_moves(board, id, roll)
@@ -67,10 +62,7 @@ class MoveKnockoutPlayer(MoveRandomPlayer):
         try:
             return self.random.choice(knockout_moves)
         except IndexError:
-            return self.parent.select_move(board, id, roll)
-
-    def __str__(self) -> str:
-        return f"{super().__str__()}({self.parent})"
+            return self.random.choice(valid_moves)
 
 
 class NeuralNetworkPlayer(Player):

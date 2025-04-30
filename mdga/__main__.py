@@ -13,9 +13,7 @@ def main() -> None:
         MoveFirstPlayer,
         MoveLastPlayer,
         lambda: MoveRandomPlayer(random),
-        lambda: MoveKnockoutPlayer(MoveFirstPlayer(), random),
-        lambda: MoveKnockoutPlayer(MoveLastPlayer(), random),
-        lambda: MoveKnockoutPlayer(MoveRandomPlayer(random), random),
+        lambda: MoveKnockoutPlayer(random),
     ]
 
     Game(
