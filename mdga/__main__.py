@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from collections import Counter
 
 from mdga.game import Game
-from mdga.player import MoveFirstPlayer, MoveKnockoutPlayer, MoveLastPlayer, MoveRandomPlayer, Player
+from mdga.player import FurthestPlayer, KnockoutPlayer, NearestPlayer, RandomPlayer, Player
 
 
 def plot_counter(counter: Counter, title: str, plot) -> None:
@@ -24,10 +24,12 @@ def main() -> None:
     random = Random()
 
     PLAYER_TYPES: list[Callable[[], Player]] = [
-        MoveFirstPlayer,
-        MoveLastPlayer,
-        lambda: MoveRandomPlayer(random),
-        lambda: MoveKnockoutPlayer(random),
+        FurthestPlayer,
+        NearestPlayer,
+        lambda: RandomPlayer(random),
+        lambda: KnockoutPlayer(FurthestPlayer()),
+        lambda: KnockoutPlayer(NearestPlayer()),
+        lambda: KnockoutPlayer(RandomPlayer(random)),
     ]
 
     # List of rounds with the player types and the winner index

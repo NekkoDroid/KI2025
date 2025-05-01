@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from random import Random
 
-from mdga.board import TRANSIT_FIELDS, Board, InvalidMoveError, Piece, PieceState
+from mdga.board import Board, InvalidMoveError, Piece, PieceState
 
 
 class Player(ABC):
@@ -42,17 +42,17 @@ class Player(ABC):
         return self.__class__.__name__
 
 
-class MoveFirstPlayer(Player):
+class FurthestPlayer(Player):
     def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
         return sorted(self.valid_moves(board, pieces, roll), key=board.distance)[-1]
 
 
-class MoveLastPlayer(Player):
+class NearestPlayer(Player):
     def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
         return sorted(self.valid_moves(board, pieces, roll), key=board.distance)[0]
 
 
-class MoveRandomPlayer(Player):
+class RandomPlayer(Player):
     random: Random
 
     def __init__(self, random: Random = Random()) -> None:
@@ -63,15 +63,24 @@ class MoveRandomPlayer(Player):
         return self.random.choice(self.valid_moves(board, pieces, roll))
 
 
-class MoveKnockoutPlayer(MoveRandomPlayer):
+class KnockoutPlayer(Player):
+    parent: Player
+
+    def __init__(self, parent: Player) -> None:
+        super().__init__()
+        self.parent = parent
+
+    def __str__(self) -> str:
+        return f"{super().__str__()}({self.parent})"
+
     def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
         valid_moves = self.valid_moves(board, pieces, roll)
         knockout_moves = self.knockout_moves(board, valid_moves, roll)
 
         try:
-            return self.random.choice(knockout_moves)
+            return self.parent.select_move(board, knockout_moves, roll)
         except IndexError:
-            return self.random.choice(valid_moves)
+            return self.parent.select_move(board, valid_moves, roll)
 
 
 class NeuralNetworkPlayer(Player):
