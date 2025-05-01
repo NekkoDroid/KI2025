@@ -46,7 +46,7 @@ class Player(ABC):
 
     def move(self, board: Board, id: int, roll: int) -> Piece:
         pieces = board.filter(id=id)
-        piece = self.select_move(board, pieces, roll)
+        piece = self.select_move(board, id, roll, pieces)
 
         self.decisions.append(
             (
@@ -59,13 +59,13 @@ class Player(ABC):
         return piece
 
     @abstractmethod
-    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
+    def select_move(self, board: Board, id: int, roll: int, pieces: tuple[Piece, ...]) -> Piece:
         raise NotImplementedError()
 
-    def valid_moves(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> tuple[Piece, ...]:
+    def valid_moves(self, board: Board, roll: int, pieces: tuple[Piece, ...]) -> tuple[Piece, ...]:
         return tuple(filter(lambda piece: self.is_valid_move(board, piece, roll), pieces))
 
-    def knockout_moves(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> tuple[Piece, ...]:
+    def knockout_moves(self, board: Board, roll: int, pieces: tuple[Piece, ...]) -> tuple[Piece, ...]:
         return tuple(filter(lambda piece: self.is_knockout_move(board, piece, roll), pieces))
 
     def is_valid_move(self, board: Board, piece: Piece, roll: int) -> bool:
@@ -89,13 +89,13 @@ class Player(ABC):
 
 
 class FurthestPlayer(Player):
-    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
-        return sorted(self.valid_moves(board, pieces, roll), key=board.distance)[-1]
+    def select_move(self, board: Board, id: int, roll: int, pieces: tuple[Piece, ...]) -> Piece:
+        return sorted(self.valid_moves(board, roll, pieces), key=board.distance)[-1]
 
 
 class NearestPlayer(Player):
-    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
-        return sorted(self.valid_moves(board, pieces, roll), key=board.distance)[0]
+    def select_move(self, board: Board, id: int, roll: int, pieces: tuple[Piece, ...]) -> Piece:
+        return sorted(self.valid_moves(board, roll, pieces), key=board.distance)[0]
 
 
 class RandomPlayer(Player):
@@ -105,8 +105,8 @@ class RandomPlayer(Player):
         super().__init__()
         self.random = random
 
-    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
-        return self.random.choice(self.valid_moves(board, pieces, roll))
+    def select_move(self, board: Board, id: int, roll: int, pieces: tuple[Piece, ...]) -> Piece:
+        return self.random.choice(self.valid_moves(board, roll, pieces))
 
 
 class KnockoutPlayer(Player):
@@ -119,16 +119,16 @@ class KnockoutPlayer(Player):
     def __str__(self) -> str:
         return f"{super().__str__()}({self.parent})"
 
-    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
-        valid_moves = self.valid_moves(board, pieces, roll)
-        knockout_moves = self.knockout_moves(board, valid_moves, roll)
+    def select_move(self, board: Board, id: int, roll: int, pieces: tuple[Piece, ...]) -> Piece:
+        valid_moves = self.valid_moves(board, roll, pieces)
+        knockout_moves = self.knockout_moves(board, roll, valid_moves)
 
         try:
-            return self.parent.select_move(board, knockout_moves, roll)
+            return self.parent.select_move(board, id, roll, knockout_moves)
         except IndexError:
-            return self.parent.select_move(board, valid_moves, roll)
+            return self.parent.select_move(board, id, roll, valid_moves)
 
 
 class NeuralNetworkPlayer(Player):
-    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
+    def select_move(self, board: Board, id: int, roll: int, pieces: tuple[Piece, ...]) -> Piece:
         raise NotImplementedError()
