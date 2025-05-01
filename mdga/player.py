@@ -1,13 +1,59 @@
 from abc import ABC, abstractmethod
 from random import Random
 
-from mdga.board import Board, InvalidMoveError, Piece, PieceState
+from mdga.board import (
+    MAX_PLAYERS,
+    MAX_ROLL,
+    PIECES_PER_PLAYER,
+    TRANSIT_FIELDS,
+    Board,
+    InvalidMoveError,
+    Piece,
+    PieceState,
+)
+
+# Roll, one-hot encoded player ID, (transit, target, home) for each piece
+ENCODED_MOVE_SIZE = 1 + MAX_PLAYERS + 3 * MAX_PLAYERS * PIECES_PER_PLAYER
+
+def encode_move(board: Board, id: int, roll: int) -> list[float]:
+    def encode_piece(piece: Piece) -> tuple[float, ...]:
+        if piece.position is None:
+            return 1, 0, 0
+
+        if piece.position >= 0:
+            # Normalize to the transit fields the range [0, 1]
+            return 0, piece.position / (TRANSIT_FIELDS - 1), 0
+
+        # Normalize the target areas to the range [0, 1]
+        return 0, 0, -(piece.position + 1) / (PIECES_PER_PLAYER - 1)
+
+    state = [roll / MAX_ROLL]
+    state += [float(id == p) for p in range(MAX_PLAYERS)]
+
+    for piece in board.pieces:
+        state += encode_piece(piece)
+
+    assert len(state) == ENCODED_MOVE_SIZE
+    return state
 
 
 class Player(ABC):
+    decisions: list[tuple[list[float], int]]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.decisions = list()
+
     def move(self, board: Board, id: int, roll: int) -> Piece:
         pieces = board.filter(id=id)
         piece = self.select_move(board, pieces, roll)
+
+        self.decisions.append(
+            (
+                encode_move(board, id, roll),
+                pieces.index(piece),
+            )
+        )
 
         assert piece in pieces
         return piece
