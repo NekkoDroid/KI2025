@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from collections import Counter
 
 from mdga.game import Game
-from mdga.player import FurthestPlayer, KnockoutPlayer, NearestPlayer, RandomPlayer, Player
+from mdga.player import FurthestPlayer, KnockoutPlayer, NearestPlayer, NeuralNetworkPlayer, RandomPlayer, Player
 
 
 def plot_counter(counter: Counter, title: str, plot) -> None:
@@ -23,7 +23,10 @@ def plot_counter(counter: Counter, title: str, plot) -> None:
 def main() -> None:
     random = Random()
 
+    nn_player = NeuralNetworkPlayer()
+
     PLAYER_TYPES: list[Callable[[], Player]] = [
+        lambda: nn_player,
         FurthestPlayer,
         NearestPlayer,
         lambda: RandomPlayer(random),
@@ -47,10 +50,14 @@ def main() -> None:
         )
 
         winner = game.play()
+        nn_player.supervised_learning(winner.decisions)
+        nn_player.decisions.clear()
 
         games_played.update(map(str, game.players))
         games_won.update([str(winner)])
 
+        # TODO: Plot game win percentage for each player type and include another chart to show the player type against
+        # which the type lost.
         plot_counter(games_played, "Player Performance: Number of Games Played by Player Type", plot_games_played)
         plot_counter(games_won, "Player Performance: Number of Wins by Player Type", plot_games_won)
         fig.tight_layout()
