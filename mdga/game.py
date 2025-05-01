@@ -53,7 +53,7 @@ class Game:
             roll = self.random.randint(MIN_ROLL, MAX_ROLL)
 
             try:
-                target = player.select_move(self.board, id, roll)
+                target = player.move(self.board, id, roll)
                 assert target.id == id
 
                 LOGGER.info(f"Player {id} moving piece from {target.position} by {roll}")

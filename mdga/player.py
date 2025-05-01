@@ -1,25 +1,33 @@
 from abc import ABC, abstractmethod
 from random import Random
 
-from mdga.board import FIELD_ENTRANCE, TRANSIT_FIELDS, Board, InvalidMoveError, Piece, PieceState
+from mdga.board import TRANSIT_FIELDS, Board, InvalidMoveError, Piece, PieceState
 
 
 class Player(ABC):
+    def move(self, board: Board, id: int, roll: int) -> Piece:
+        pieces = board.filter(id=id)
+        piece = self.select_move(board, pieces, roll)
+
+        assert piece in pieces
+        return piece
+
     @abstractmethod
-    def select_move(self, board: Board, id: int, roll: int) -> Piece:
+    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
         raise NotImplementedError()
 
-    def valid_moves(self, board: Board, id: int, roll: int) -> tuple[Piece, ...]:
-        def is_valid_move(piece: Piece) -> bool:
-            try:
-                board.simulate_move(piece, roll)
-                return True
-            except InvalidMoveError:
-                return False
+    def valid_moves(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> tuple[Piece, ...]:
+        return tuple(filter(lambda piece: self.is_valid_move(board, piece, roll), pieces))
 
-        pieces = board.filter(id=id)
-        pieces = filter(is_valid_move, pieces)
-        return tuple(pieces)
+    def knockout_moves(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> tuple[Piece, ...]:
+        return tuple(filter(lambda piece: self.is_knockout_move(board, piece, roll), pieces))
+
+    def is_valid_move(self, board: Board, piece: Piece, roll: int) -> bool:
+        try:
+            board.simulate_move(piece, roll)
+            return True
+        except InvalidMoveError:
+            return False
 
     def is_knockout_move(self, board: Board, piece: Piece, roll: int) -> bool:
         # Only valid moves from home to transit or transit to transit can knock out pieces
@@ -35,32 +43,30 @@ class Player(ABC):
 
 
 class MoveFirstPlayer(Player):
-    def select_move(self, board: Board, id: int, roll: int) -> Piece:
-        return sorted(self.valid_moves(board, id, roll), key=board.distance)[-1]
+    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
+        return sorted(self.valid_moves(board, pieces, roll), key=board.distance)[-1]
 
 
 class MoveLastPlayer(Player):
-    def select_move(self, board: Board, id: int, roll: int) -> Piece:
-        return sorted(self.valid_moves(board, id, roll), key=board.distance)[0]
+    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
+        return sorted(self.valid_moves(board, pieces, roll), key=board.distance)[0]
 
 
 class MoveRandomPlayer(Player):
     random: Random
 
     def __init__(self, random: Random = Random()) -> None:
+        super().__init__()
         self.random = random
 
-    def select_move(self, board: Board, id: int, roll: int) -> Piece:
-        return self.random.choice(self.valid_moves(board, id, roll))
+    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
+        return self.random.choice(self.valid_moves(board, pieces, roll))
 
 
 class MoveKnockoutPlayer(MoveRandomPlayer):
-    def select_move(self, board: Board, id: int, roll: int) -> Piece:
-        def is_knockout_move(piece: Piece) -> bool:
-            return self.is_knockout_move(board, piece, roll)
-
-        valid_moves = self.valid_moves(board, id, roll)
-        knockout_moves = tuple(filter(is_knockout_move, valid_moves))
+    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
+        valid_moves = self.valid_moves(board, pieces, roll)
+        knockout_moves = self.knockout_moves(board, valid_moves, roll)
 
         try:
             return self.random.choice(knockout_moves)
@@ -69,12 +75,12 @@ class MoveKnockoutPlayer(MoveRandomPlayer):
 
 
 class MoveRulesPlayer(Player):
-    def select_move(self, board: Board, id: int, roll: int) -> Piece:
-        moves = sorted(self.valid_moves(board, id, roll), key=board.distance)
+    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
+        moves = sorted(self.valid_moves(board, pieces, roll), key=board.distance)
 
         # Prefer to move pieces out of transit fields if possible
         for piece in moves:
-            if board.distance(piece) >= TRANSIT_FIELDS:
+            if board.distance(piece) > TRANSIT_FIELDS:
                 return piece
 
         # If we can knock out a piece, do it
@@ -86,5 +92,5 @@ class MoveRulesPlayer(Player):
 
 
 class NeuralNetworkPlayer(Player):
-    def select_move(self, board: Board, id: int, roll: int) -> Piece:
+    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
         raise NotImplementedError()
