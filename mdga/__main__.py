@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from collections import Counter
 
 from mdga.game import Game
-from mdga.player import MoveFirstPlayer, MoveKnockoutPlayer, MoveLastPlayer, MoveRandomPlayer, Player, MoveRulesPlayer
+from mdga.player import MoveFirstPlayer, MoveKnockoutPlayer, MoveLastPlayer, MoveRandomPlayer, Player
 
 
 def plot_counter(counter: Counter, title: str, plot) -> None:
@@ -26,7 +26,6 @@ def main() -> None:
     PLAYER_TYPES: list[Callable[[], Player]] = [
         MoveFirstPlayer,
         MoveLastPlayer,
-        MoveRulesPlayer,
         lambda: MoveRandomPlayer(random),
         lambda: MoveKnockoutPlayer(random),
     ]

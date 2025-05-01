@@ -74,23 +74,6 @@ class MoveKnockoutPlayer(MoveRandomPlayer):
             return self.random.choice(valid_moves)
 
 
-class MoveRulesPlayer(Player):
-    def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
-        moves = sorted(self.valid_moves(board, pieces, roll), key=board.distance)
-
-        # Prefer to move pieces out of transit fields if possible
-        for piece in moves:
-            if board.distance(piece) > TRANSIT_FIELDS:
-                return piece
-
-        # If we can knock out a piece, do it
-        for piece in moves:
-            if self.is_knockout_move(board, piece, roll):
-                return piece
-
-        return moves[-1]
-
-
 class NeuralNetworkPlayer(Player):
     def select_move(self, board: Board, pieces: tuple[Piece, ...], roll: int) -> Piece:
         raise NotImplementedError()
