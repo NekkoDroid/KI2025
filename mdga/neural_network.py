@@ -130,14 +130,16 @@ class NeuralNetworkPopulation:
 
         sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
         sorted_networks = [self.population[i] for i in sorted_indices]
+        sorted_weights = [scores[i] for i in sorted_indices]
 
         # We only want to keep the best half of the population
         # and create new children for the rest of the population
         top_population = sorted_networks[: len(self.population) // 2]
+        top_weights = sorted_weights[: len(top_population)]
 
         new_population: list[NeuralNetworkPlayer] = list()
         for _ in range(len(self.population) - len(top_population)):
-            parents = self.random.sample(top_population, 2)
+            parents = self.random.choices(top_population, top_weights, k=2)
             child = NeuralNetworkPlayer.crossover(parents, self.random)
             child.mutate(mutation_rate)
             new_population.append(child)
