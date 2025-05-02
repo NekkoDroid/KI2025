@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 from collections import Counter
 
 from mdga.game import Game
-from mdga.player import FurthestPlayer, KnockoutPlayer, NearestPlayer, NeuralNetworkPlayer, RandomPlayer, Player
+from mdga.neural_network import NeuralNetworkPlayer
+from mdga.player import FurthestPlayer, KnockoutPlayer, NearestPlayer, RandomPlayer, Player
 
 
 def plot_counter(counter: Counter, title: str, plot) -> None:
@@ -27,7 +28,7 @@ NN_MODEL_PATH = Path("./mdga.pt")
 def main() -> None:
     random = Random()
 
-    nn_player = NeuralNetworkPlayer()
+    nn_player = NeuralNetworkPlayer(random)
     if NN_MODEL_PATH.exists():
         nn_player.load(NN_MODEL_PATH)
 
@@ -56,7 +57,7 @@ def main() -> None:
         )
 
         winner = game.play()
-        nn_player.supervised_learning(winner.decisions)
+        nn_player.learn(winner.decisions)
         nn_player.decisions.clear()
 
         games_played.update(map(str, game.players))
