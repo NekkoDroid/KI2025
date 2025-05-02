@@ -8,7 +8,7 @@ from mdga.player import Player
 
 
 LOGGER = logging.getLogger(__name__)
-LOGGER.setLevel(os.getenv("LOG_LEVEL", "debug").upper())
+LOGGER.setLevel(os.getenv("LOG_LEVEL", "critical").upper())
 LOGGER.addHandler(logging.StreamHandler(sys.stdout))
 
 
@@ -66,4 +66,4 @@ class Game:
             if all(piece.state == PieceState.target for piece in self.board.filter(id=id)):
                 self.winner = player
 
-            self.board.print(id, LOGGER.debug)
+            self.board.print(0, LOGGER.debug)
