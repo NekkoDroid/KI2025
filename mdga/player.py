@@ -1,3 +1,4 @@
+from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -170,6 +171,12 @@ class NeuralNetworkPlayer(Player):
             return pieces[best_move]
         except ValueError:
             raise LookupError("No valid moves available")
+
+    def save(self, path: str | Path) -> None:
+        torch.save(self.network.state_dict(), path)
+
+    def load(self, path: str | Path) -> None:
+        self.network.load_state_dict(torch.load(path))
 
     def supervised_learning(self, training_data: list[tuple[list[float], int]]) -> None:
         self.network.train()

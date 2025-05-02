@@ -1,3 +1,4 @@
+from pathlib import Path
 from random import Random
 import sys
 from typing import Callable
@@ -20,10 +21,15 @@ def plot_counter(counter: Counter, title: str, plot) -> None:
     plot.set_ylim(0, max(count) * 1.1 if count else 1)
 
 
+NN_MODEL_PATH = Path("./mdga.pt")
+
+
 def main() -> None:
     random = Random()
 
     nn_player = NeuralNetworkPlayer()
+    if NN_MODEL_PATH.exists():
+        nn_player.load(NN_MODEL_PATH)
 
     PLAYER_TYPES: list[Callable[[], Player]] = [
         lambda: nn_player,
@@ -62,6 +68,8 @@ def main() -> None:
         plot_counter(games_won, "Player Performance: Number of Wins by Player Type", plot_games_won)
         fig.tight_layout()
         plt.pause(0.1)
+
+    nn_player.save(NN_MODEL_PATH)
 
 
 if __name__ == "__main__":
