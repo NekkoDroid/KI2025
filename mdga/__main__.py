@@ -4,6 +4,8 @@ import sys
 import matplotlib.pyplot as plt
 from collections import deque
 
+import torch
+
 from mdga.game import Game
 from mdga.neural_network import NeuralNetworkPlayer, NeuralNetworkPopulation
 from mdga.player import FurthestPlayer, KnockoutPlayer, NearestPlayer, RandomPlayer, Player
@@ -23,8 +25,9 @@ def has_stagnated(history: list[float], threshold: float, patience: int = 1000) 
 
 def main() -> None:
     random = Random()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    nn_player = NeuralNetworkPlayer(random)
+    nn_player = NeuralNetworkPlayer(device, random)
     if NN_MODEL_SUPERVISED_PATH.exists():
         nn_player.load(NN_MODEL_SUPERVISED_PATH)
 
@@ -108,7 +111,7 @@ def main() -> None:
     nn_player.save(NN_MODEL_SUPERVISED_PATH)
 
     POPULATION_SIZE = 100
-    population = NeuralNetworkPopulation(POPULATION_SIZE, random)
+    population = NeuralNetworkPopulation(POPULATION_SIZE, device, random)
     for player in population:
         player.network.load_state_dict(nn_player.network.state_dict())
 

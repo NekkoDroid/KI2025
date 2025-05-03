@@ -24,21 +24,23 @@ class NeuralNetwork(nn.Sequential):
         )
 
 class NeuralNetworkPlayer(Player):
+    device: torch.device
     random: Random
     network: nn.Module
     optimizer: optim.Optimizer
     criterion: nn.Module
 
-    def __init__(self, random: Random = Random()) -> None:
+    def __init__(self, device: torch.device, random: Random = Random()) -> None:
         super().__init__()
+        self.device = device
         self.random = random
-        self.network = NeuralNetwork()
+        self.network = NeuralNetwork().to(self.device)
         self.optimizer = optim.Adam(self.network.parameters(), lr=0.001)
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss().to(self.device)
 
     def select_move(self, board: Board, id: int, roll: int, pieces: tuple[Piece, ...]) -> Piece:
         state = encode_move(board, id, roll)
-        state = torch.tensor(state, dtype=torch.float32)
+        state = torch.tensor(state, dtype=torch.float32, device=self.device)
 
         self.network.eval()
         probabilities = self.network(state)
@@ -61,8 +63,12 @@ class NeuralNetworkPlayer(Player):
     def learn(self, training_data: list[tuple[list[float], int]]) -> None:
         self.network.train()
         for state, target in training_data:
-            state = torch.tensor(state, dtype=torch.float32)
-            target = torch.tensor([float(target == i) for i in range(PIECES_PER_PLAYER)], dtype=torch.float32)
+            state = torch.tensor(state, dtype=torch.float32, device=self.device)
+            target = torch.tensor(
+                [float(target == i) for i in range(PIECES_PER_PLAYER)],
+                dtype=torch.float32,
+                device=self.device,
+            )
 
             self.optimizer.zero_grad()
             output = self.network(state)
@@ -80,8 +86,8 @@ class NeuralNetworkPlayer(Player):
         self.network.load_state_dict(state)
 
     @classmethod
-    def crossover(cls, parents: list["NeuralNetworkPlayer"], random: Random = Random()) -> "NeuralNetworkPlayer":
-        child = cls(random)
+    def crossover(cls, device: torch.device, parents: list["NeuralNetworkPlayer"], random: Random = Random()) -> "NeuralNetworkPlayer":
+        child = cls(device, random)
         state = child.network.state_dict()
 
         for key in state:
@@ -114,12 +120,14 @@ class NeuralNetworkPlayer(Player):
 
 
 class NeuralNetworkPopulation:
+    device: torch.device
     random: Random
     population: list[NeuralNetworkPlayer]
 
-    def __init__(self, population: int, random: Random = Random()) -> None:
+    def __init__(self, population: int, device: torch.device, random: Random = Random()) -> None:
+        self.device = device
         self.random = random
-        self.population = [NeuralNetworkPlayer(random) for _ in range(population)]
+        self.population = [NeuralNetworkPlayer(device, random) for _ in range(population)]
 
     def __len__(self) -> int:
         return len(self.population)
@@ -146,11 +154,11 @@ class NeuralNetworkPopulation:
 
         # Add 10% new random individuals
         for _ in range(len(self.population) // 10):
-            new_population.append(NeuralNetworkPlayer(self.random))
+            new_population.append(NeuralNetworkPlayer(self.device, self.random))
 
         for _ in range(len(self.population) - len(new_population)):
             parents = self.random.choices(top_population, top_weights, k=2)
-            child = NeuralNetworkPlayer.crossover(parents, self.random)
+            child = NeuralNetworkPlayer.crossover(self.device, parents, self.random)
             child.mutate(mutation_rate)
             new_population.append(child)
 
