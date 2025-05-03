@@ -139,6 +139,7 @@ def main() -> None:
         update_plot()
 
     # Save the best player of the generation
+    NN_MODEL_GENETIC_PATH.mkdir(exist_ok=True)
     for i, player in enumerate(population.population):
         player.save(NN_MODEL_GENETIC_PATH / f"{i}.pt")
 
