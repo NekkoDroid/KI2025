@@ -113,19 +113,19 @@ def main() -> None:
         player.network.load_state_dict(nn_player.network.state_dict())
 
     while plt.fignum_exists(fig.number):
-        def play_game(player: NeuralNetworkPlayer) -> Player:
+        def play_game(player: NeuralNetworkPlayer) -> Game:
             game = Game(
                 player,
                 *random.choices(PLAYER_TYPES, k=3),
                 random=random,
             )
 
-            winner = game.play()
+            game.play()
             for p in game.players:
                 p.decisions.clear()
 
             plt.pause(0.1)
-            return winner
+            return game
 
         FITNESS_AVERAGE = 100
         fitness = [player.fitness(play_game, FITNESS_AVERAGE) for player in population]

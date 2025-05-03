@@ -5,7 +5,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from mdga.board import PIECES_PER_PLAYER, Board, Piece
+from mdga.board import PIECES_PER_PLAYER, Board, Piece, PieceState
+from mdga.game import Game
 from mdga.player import ENCODED_MOVE_SIZE, Player, encode_move
 
 
@@ -89,23 +90,27 @@ class NeuralNetworkPlayer(Player):
         child.network.load_state_dict(state)
         return child
 
-    def fitness(self, playround: Callable[["NeuralNetworkPlayer"], Player], games: int) -> float:
-        wins = 0
+    def fitness(self, play_game: Callable[["NeuralNetworkPlayer"], Game], games: int) -> float:
+        score: float = 0
 
         for _ in range(games):
-            winner = playround(self)
-            if winner == self:
-                wins += 1
+            game = play_game(self)
+
+            if game.play() == self:
+                score += 1
+
+            # Add 0.25 extra score for each piece that we managed to get into the target area
+            # This means that we get 2 points if we win and < 1 for any game we didn't win
+            # we want to encourage that we get pieces into the target area, but we want to majorly
+            # encourage actually winning the game
+            id = game.players.index(self)
+            score += len(game.board.filter(id=id, state=PieceState.target)) / PIECES_PER_PLAYER
 
         # NOTE: Should the fitness also include how long the game lasted?
         # We don't really care about the number of turns, but it could be a good indicator
         # Same for how many pieces are in the target area?
-        # We also don't really care about the number of pieces in the target area
-        # since we are only trying to win the game and that is just a binary
-        # but it could help the network learn faster since it allows incremental improvements
-        # instead of a binary win/loss
 
-        return wins / games
+        return score / games
 
 
 class NeuralNetworkPopulation:
@@ -137,13 +142,17 @@ class NeuralNetworkPopulation:
         top_population = sorted_networks[: len(self.population) // 2]
         top_weights = sorted_weights[: len(top_population)]
 
-        new_population: list[NeuralNetworkPlayer] = list()
-        for _ in range(len(self.population) - len(top_population)):
+        new_population: list[NeuralNetworkPlayer] = list(top_population)
+
+        # Add 10% new random individuals
+        for _ in range(len(self.population) // 10):
+            new_population.append(NeuralNetworkPlayer(self.random))
+
+        for _ in range(len(self.population) - len(new_population)):
             parents = self.random.choices(top_population, top_weights, k=2)
             child = NeuralNetworkPlayer.crossover(parents, self.random)
             child.mutate(mutation_rate)
             new_population.append(child)
 
-        new_population = top_population + new_population
         assert len(new_population) == len(self.population)
         self.population = new_population
