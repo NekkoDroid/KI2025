@@ -60,18 +60,20 @@ def main() -> None:
         for player in PLAYER_TYPES:
             plot1.plot(averages[player], label=str(player))
 
-        plot1.set_ylim(0, 1)
-        plot1.set_xlim(
-            min(map(len, averages.values())) * 0.9,
-            max(map(len, averages.values())) * 1.1,
-        )
+        if averages:
+            plot1.set_ylim(0, 1)
+            plot1.set_xlim(
+                min(map(len, averages.values())) * 0.9,
+                max(map(len, averages.values())) * 1.1,
+            )
+
         plot1.legend()
         plot1.grid()
 
         plot2.clear()
         plot2.set_title("Fitness of each generation")
         plot2.set_xlabel("Generation")
-        plot2.set_ylabel("Winrate")
+        plot2.set_ylabel("Fitness")
 
         plot2.plot(best_fitness, label="Best fitness")
         plot2.plot(worst_fitness, label="Worst fitness")
@@ -110,10 +112,13 @@ def main() -> None:
 
     nn_player.save(NN_MODEL_SUPERVISED_PATH)
 
-    POPULATION_SIZE = 100
+    POPULATION_SIZE = 32
+    MUTATION_RATE = 0.1
+
     population = NeuralNetworkPopulation(POPULATION_SIZE, device, random)
     for player in population:
         player.network.load_state_dict(nn_player.network.state_dict())
+        player.mutate(MUTATION_RATE)
 
     while plt.fignum_exists(fig.number):
         def play_game(player: NeuralNetworkPlayer) -> Game:
@@ -127,12 +132,12 @@ def main() -> None:
             for p in game.players:
                 p.decisions.clear()
 
-            plt.pause(0.1)
+            update_plot()
             return game
 
         FITNESS_AVERAGE = 100
         fitness = [player.fitness(play_game, FITNESS_AVERAGE) for player in population]
-        population.next_generation(fitness, mutation_rate=0.1)
+        population.next_generation(fitness, MUTATION_RATE)
 
         best_fitness.append(max(fitness))
         worst_fitness.append(min(fitness))

@@ -13,13 +13,13 @@ from mdga.player import ENCODED_MOVE_SIZE, Player, encode_move
 class NeuralNetwork(nn.Sequential):
     def __init__(self) -> None:
         super().__init__(
-            nn.Linear(ENCODED_MOVE_SIZE, 4096),
+            nn.Linear(ENCODED_MOVE_SIZE, 16384),
             nn.ReLU(),
-            nn.Linear(4096, 256),
+            nn.Linear(16384, 4096),
             nn.ReLU(),
-            nn.Linear(256, 16),
+            nn.Linear(4096, 128),
             nn.ReLU(),
-            nn.Linear(16, PIECES_PER_PLAYER),
+            nn.Linear(128, PIECES_PER_PLAYER),
             nn.Softmax(dim=-1),
         )
 
