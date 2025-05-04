@@ -105,7 +105,7 @@ def main() -> None:
         for player in game.players:
             player.decisions.clear()
 
-        STAGNATION_THRESHOLD = 0.03
+        STAGNATION_THRESHOLD = 0.02
         STAGNATION_PATIENCE = 300
         if has_stagnated(averages[nn_player], STAGNATION_THRESHOLD, STAGNATION_PATIENCE):
             break

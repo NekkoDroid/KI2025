@@ -139,28 +139,28 @@ class NeuralNetworkPopulation:
         return self.random.choice(self.population)
 
     def next_generation(self, scores: list[float], mutation_rate: float) -> None:
-        assert len(scores) == len(self.population)
-
-        sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
-        sorted_networks = [self.population[i] for i in sorted_indices]
-        sorted_weights = [scores[i] for i in sorted_indices]
+        population_size = len(self.population)
+        assert population_size == len(scores)
 
         # We only want to keep the best half of the population
-        # and create new children for the rest of the population
-        top_population = sorted_networks[: len(self.population) // 2]
-        top_weights = sorted_weights[: len(top_population)]
+        # and create new children only inheriting from that remaining population
+        sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+        sorted_indices = sorted_indices[: population_size // 2]
 
-        new_population: list[NeuralNetworkPlayer] = list(top_population)
+        sorted_parents = [self.population[i] for i in sorted_indices]
+        sorted_scores = [scores[i] for i in sorted_indices]
+
+        self.population = list(sorted_parents)
 
         # Add 10% new random individuals
         for _ in range(len(self.population) // 10):
-            new_population.append(NeuralNetworkPlayer(self.device, self.random))
+            self.population.append(NeuralNetworkPlayer(self.device, self.random))
 
-        for _ in range(len(self.population) - len(new_population)):
-            parents = self.random.choices(top_population, top_weights, k=2)
+        # Fill the remaining with individuals inheriting from the parents
+        for _ in range(population_size - len(self.population)):
+            parents = self.random.choices(sorted_parents, sorted_scores, k=2)
             child = NeuralNetworkPlayer.crossover(self.device, parents, self.random)
             child.mutate(mutation_rate)
-            new_population.append(child)
+            self.population.append(child)
 
-        assert len(new_population) == len(self.population)
-        self.population = new_population
+        assert len(self.population) == population_size
