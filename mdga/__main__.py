@@ -89,7 +89,7 @@ def main() -> None:
 
     while plt.fignum_exists(fig.number):
         game = Game(
-            *random.choices(PLAYER_TYPES, k=4),
+            *random.sample(PLAYER_TYPES, k=4),
             random=random,
         )
 
@@ -124,7 +124,7 @@ def main() -> None:
         def play_game(player: NeuralNetworkPlayer) -> Game:
             game = Game(
                 player,
-                *random.choices(PLAYER_TYPES, k=3),
+                *random.sample(PLAYER_TYPES[1:], k=3),
                 random=random,
             )
 
