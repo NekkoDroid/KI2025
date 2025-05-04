@@ -4,7 +4,7 @@ description = "Man, Don't Get Angry (Mensch ärgere Dich nicht)"
 version = "2025.04"
 
 requires-python = ">= 3.12"
-dependencies = ["matplotlib", "torch"]
+dependencies = ["matplotlib", "torch", "numpy"]
 
 [tool.ruff]
 line-length = 120

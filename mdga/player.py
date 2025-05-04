@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from random import Random
 
+import numpy as np
+
 from mdga.board import (
     MAX_PLAYERS,
     MAX_ROLL,
@@ -12,34 +14,14 @@ from mdga.board import (
     PieceState,
 )
 
-# Roll, one-hot encoded player ID, (transit, target, home) for each piece
-ENCODED_MOVE_SIZE = 1 + MAX_PLAYERS + 3 * MAX_PLAYERS * PIECES_PER_PLAYER
-
-
-def encode_move(board: Board, id: int, roll: int) -> list[float]:
-    def encode_piece(piece: Piece) -> tuple[float, ...]:
-        if piece.position is None:
-            return 1, 0, 0
-
-        if piece.position >= 0:
-            # Normalize to the transit fields the range [0, 1]
-            return 0, piece.position / (TRANSIT_FIELDS - 1), 0
-
-        # Normalize the target areas to the range [0, 1]
-        return 0, 0, -(piece.position + 1) / (PIECES_PER_PLAYER - 1)
-
-    state = [roll / MAX_ROLL]
-    state += [float(id == p) for p in range(MAX_PLAYERS)]
-
-    for piece in board.pieces:
-        state += encode_piece(piece)
-
-    assert len(state) == ENCODED_MOVE_SIZE
-    return state
+# Current player ID (one-hot) + roll (normalized) + Piece ID (one-hot)
+BOARD_STATE_FEATURES = MAX_PLAYERS + 1 + MAX_PLAYERS
+# Interleaved groups of (Target for player X, Home for player X, Transit fields from X-Y) * 4
+BOARD_STATE_POSITIONS = 2 * (PIECES_PER_PLAYER * MAX_PLAYERS) + TRANSIT_FIELDS
 
 
 class Player(ABC):
-    decisions: list[tuple[list[float], int]]
+    decisions: list[tuple[np.ndarray, int]]
 
     def __init__(self) -> None:
         super().__init__()
@@ -51,7 +33,7 @@ class Player(ABC):
 
         self.decisions.append(
             (
-                encode_move(board, id, roll),
+                self.encode_move(board, id, roll),
                 pieces.index(piece),
             )
         )
@@ -84,6 +66,50 @@ class Player(ABC):
         # We can safely assume that none of the pieces on the target position are from the current ID
         # since such a move would be an invalid move and shouldn't be passed to this function
         return any(board.filter(position=board.simulate_move(piece, roll)))
+
+    def encode_move(self, board: Board, id: int, roll: int) -> np.ndarray:
+        # We encode each representation of "home", "transit" and "target" seperately and
+        # interleave each of them, so that there is a somewhat continuous representation of the board
+
+        target = np.zeros((MAX_PLAYERS, PIECES_PER_PLAYER * MAX_PLAYERS), dtype=np.float32)
+        for player_id in range(MAX_PLAYERS):
+            for piece in board.filter(id=player_id, state=PieceState.target):
+                assert piece.position is not None and piece.position < 0
+                target[piece.id][piece.id * PIECES_PER_PLAYER - (piece.position + 1)] = 1.0
+        target = np.split(target, MAX_PLAYERS, axis=1)
+
+        home = np.zeros((MAX_PLAYERS, PIECES_PER_PLAYER * MAX_PLAYERS))
+        for player_id in range(MAX_PLAYERS):
+            for offset, piece in enumerate(board.filter(id=player_id, state=PieceState.home)):
+                home[piece.id][piece.id * PIECES_PER_PLAYER + offset] = 1.0
+        home = np.split(home, MAX_PLAYERS, axis=1)
+
+        transit = np.zeros((MAX_PLAYERS, TRANSIT_FIELDS))
+        for position in range(TRANSIT_FIELDS):
+            for piece in board.filter(position=position):
+                assert piece.position is not None and piece.position >= 0
+                transit[piece.id][piece.position] = 1.0
+        transit = np.split(transit, MAX_PLAYERS, axis=1)
+
+        arrays = list()
+        for player_id in range(MAX_PLAYERS):
+            arrays.extend([
+                home[player_id],
+                transit[player_id],
+                target[player_id],
+            ])
+
+        fields = np.concat(arrays, axis=1)
+        assert fields.shape[0] == MAX_PLAYERS and fields.shape[1] == BOARD_STATE_POSITIONS
+
+        # Current player ID (one-hot) + roll (normalized)
+        remainder = np.zeros((MAX_PLAYERS + 1, BOARD_STATE_POSITIONS), dtype=np.float32)
+        remainder[id, :] = 1.0
+        remainder[MAX_PLAYERS, :] = roll / MAX_ROLL
+
+        rv = np.concat([remainder, fields])
+        assert rv.shape[0] == BOARD_STATE_FEATURES and rv.shape[1] == BOARD_STATE_POSITIONS
+        return rv
 
     def __str__(self) -> str:
         return self.__class__.__name__

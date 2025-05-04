@@ -1,27 +1,61 @@
 from pathlib import Path
 from random import Random
 from typing import Callable
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from mdga.board import PIECES_PER_PLAYER, Board, Piece, PieceState
+from mdga.board import MAX_ROLL, PIECES_PER_PLAYER, Board, Piece, PieceState
 from mdga.game import Game
-from mdga.player import ENCODED_MOVE_SIZE, Player, encode_move
+from mdga.player import BOARD_STATE_FEATURES, BOARD_STATE_POSITIONS, Player
+
+
+class Unsqueeze(nn.Module):
+    def __init__(self, dim: int) -> None:
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x.unsqueeze(self.dim)
 
 
 class NeuralNetwork(nn.Sequential):
     def __init__(self) -> None:
+        # We need more than MAX_ROLL since home and target fields are interleaved into the fields
+        MAX_MOVE_DISTANCE = MAX_ROLL + PIECES_PER_PLAYER * 2 + 1
+
         super().__init__(
-            nn.Linear(ENCODED_MOVE_SIZE, 16384),
+            Unsqueeze(dim=1), # Add channel dimension
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=32,
+                # Combine all features down to 1 and take into account all posssible move distances
+                kernel_size=(BOARD_STATE_FEATURES, MAX_MOVE_DISTANCE),
+                padding=(0, MAX_MOVE_DISTANCE // 2),
+                padding_mode="circular"
+            ),
             nn.ReLU(),
-            nn.Linear(16384, 4096),
+            nn.Conv2d(
+                in_channels=32,
+                out_channels=64,
+                kernel_size=(1, MAX_MOVE_DISTANCE),
+                padding=(0, MAX_MOVE_DISTANCE // 2),
+                padding_mode="circular"
+            ),
             nn.ReLU(),
-            nn.Linear(4096, 128),
+            # Downsample to half the width
+            nn.MaxPool2d(
+                kernel_size=(1, 2),
+                stride=(1, 2),
+            ),
+            nn.Flatten(),
+            nn.Linear((BOARD_STATE_POSITIONS // 2) * 64, 128),
             nn.ReLU(),
             nn.Linear(128, PIECES_PER_PLAYER),
             nn.Softmax(dim=-1),
         )
+
 
 class NeuralNetworkPlayer(Player):
     device: torch.device
@@ -39,20 +73,25 @@ class NeuralNetworkPlayer(Player):
         self.criterion = nn.CrossEntropyLoss().to(self.device)
 
     def select_move(self, board: Board, id: int, roll: int, pieces: tuple[Piece, ...]) -> Piece:
-        state = encode_move(board, id, roll)
-        state = torch.tensor(state, dtype=torch.float32, device=self.device)
+        state = self.encode_move(board, id, roll)
+        state = torch.tensor(np.array([state]), dtype=torch.float32, device=self.device)
 
         self.network.eval()
-        probabilities = self.network(state)
+        with torch.no_grad():
+            probabilities = self.network(state)
+
+        assert len(probabilities) == 1
+        probabilities = probabilities[0]
 
         valid_moves = self.valid_moves(board, roll, pieces)
         valid_indices = [pieces.index(piece) for piece in valid_moves]
 
-        try:
-            best_move = max(valid_indices, key=lambda i: probabilities[i])
-            return pieces[best_move]
-        except ValueError:
+        if not valid_indices:
             raise LookupError("No valid moves available")
+
+        valid_probabilities = [max(probabilities[i], 1e-8) for i in valid_indices]
+        selected_index = self.random.choices(valid_indices, valid_probabilities)[0]
+        return pieces[selected_index]
 
     def save(self, path: str | Path) -> None:
         torch.save(self.network.state_dict(), path)
@@ -60,28 +99,39 @@ class NeuralNetworkPlayer(Player):
     def load(self, path: str | Path) -> None:
         self.network.load_state_dict(torch.load(path))
 
-    def learn(self, training_data: list[tuple[list[float], int]]) -> None:
+    def learn(self, training_data: list[tuple[np.ndarray, int]]) -> None:
         self.network.train()
-        for state, target in training_data:
-            state = torch.tensor(state, dtype=torch.float32, device=self.device)
-            target = torch.tensor(
-                [float(target == i) for i in range(PIECES_PER_PLAYER)],
+
+        states, targets = zip(*training_data)
+
+        states = torch.stack([
+            torch.tensor(
+                state,
                 dtype=torch.float32,
                 device=self.device,
-            )
+            ) for state in states
+        ])
 
-            self.optimizer.zero_grad()
-            output = self.network(state)
-            loss = self.criterion(output, target)
-            loss.backward()
-            self.optimizer.step()
+        targets = torch.stack([
+            torch.tensor(
+                    [float(target == i) for i in range(PIECES_PER_PLAYER)],
+                    dtype=torch.float32,
+                    device=self.device,
+            ) for target in targets
+        ])
+
+        self.optimizer.zero_grad()
+        outputs = self.network(states)
+        loss = self.criterion(outputs, targets)
+        loss.backward()
+        self.optimizer.step()
 
     def mutate(self, mutation_rate: float) -> None:
         state = self.network.state_dict()
 
         for key in state:
-            if self.random.random() < mutation_rate:
-                state[key] += torch.randn_like(state[key])
+            if torch.is_floating_point(state[key]) and self.random.random() < mutation_rate:
+                state[key] += torch.randn_like(state[key]) * 0.01
 
         self.network.load_state_dict(state)
 
