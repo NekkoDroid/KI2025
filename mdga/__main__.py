@@ -1,6 +1,10 @@
+from concurrent import futures
+from contextlib import contextmanager
 from pathlib import Path
 from random import Random
 import sys
+import time
+from typing import Callable, Iterator
 import matplotlib.pyplot as plt
 from collections import deque
 
@@ -13,6 +17,15 @@ from mdga.player import FurthestPlayer, KnockoutPlayer, NearestPlayer, RandomPla
 
 NN_MODEL_SUPERVISED_PATH = Path("./mdga-supervised.pt")
 NN_MODEL_GENETIC_PATH = Path("./mdga-genetic.pt")
+
+
+@contextmanager
+def print_duration(message: str = "Time elapsed: {}", func: Callable[[str], None] = print) -> Iterator[None]:
+    start = time.time()
+    try:
+        yield
+    finally:
+        func(message.format(time.time() - start))
 
 
 def has_stagnated(history: list[float], threshold: float, patience: int = 1000) -> bool:
@@ -49,7 +62,6 @@ def main() -> None:
     average_fitness: list[float] = list()
     median_fitness: list[float] = list()
 
-    STAGNATION_THRESHOLD = 0.02
     STAGNATION_PATIENCE = 300
 
     fig, (plot1, plot2) = plt.subplots(ncols=2)
@@ -90,7 +102,6 @@ def main() -> None:
         plot2.grid()
 
         fig.tight_layout()
-        plt.pause(0.1)
 
 
     while plt.fignum_exists(fig.number):
@@ -106,17 +117,19 @@ def main() -> None:
             averages[player].append(sum(histories[player]) / len(histories[player]))
 
         update_plot()
+        plt.pause(0.01)
 
         nn_player.learn(winner.decisions)
         for player in game.players:
             player.decisions.clear()
 
+        STAGNATION_THRESHOLD = 0.01
         if has_stagnated(averages[nn_player], STAGNATION_THRESHOLD, STAGNATION_PATIENCE):
             break
 
     nn_player.save(NN_MODEL_SUPERVISED_PATH)
 
-    POPULATION_SIZE = 32
+    POPULATION_SIZE = 20
     MUTATION_RATE = 0.1
 
     population = NeuralNetworkPopulation(POPULATION_SIZE, device, random)
@@ -124,31 +137,39 @@ def main() -> None:
         player.network.load_state_dict(nn_player.network.state_dict())
         player.mutate(MUTATION_RATE)
 
-    while plt.fignum_exists(fig.number):
-        def play_game(player: NeuralNetworkPlayer) -> Game:
-            game = Game(
-                player,
-                *random.sample(PLAYER_TYPES[1:], k=3),
-                random=random,
-            )
+    with futures.ThreadPoolExecutor() as executor:
+        while plt.fignum_exists(fig.number):
+            def play_game(player: NeuralNetworkPlayer) -> Game:
+                game = Game(
+                    player,
+                    *random.sample(PLAYER_TYPES[1:], k=3),
+                    random=random,
+                )
 
-            game.play()
-            for p in game.players:
-                p.decisions.clear()
+                game.play()
+                for p in game.players:
+                    p.decisions.clear()
+
+                return game
+
+            FITNESS_AVERAGE = 100
+            def determine_fitness(player: NeuralNetworkPlayer) -> float:
+                return player.fitness(play_game, FITNESS_AVERAGE)
+
+            with print_duration("Determing fitness took {} seconds"):
+                fitness = list(executor.map(determine_fitness, population.population))
+                #fitness = list(map(determine_fitness, population.population))
+
+            with print_duration("Creating new generation took {} seconds"):
+                population.next_generation(fitness, MUTATION_RATE)
+
+            best_fitness.append(max(fitness))
+            worst_fitness.append(min(fitness))
+            average_fitness.append(sum(fitness) / len(fitness))
+            median_fitness.append(sorted(fitness)[len(fitness) // 2])
 
             update_plot()
-            return game
-
-        FITNESS_AVERAGE = 100
-        fitness = [player.fitness(play_game, FITNESS_AVERAGE) for player in population]
-        population.next_generation(fitness, MUTATION_RATE)
-
-        best_fitness.append(max(fitness))
-        worst_fitness.append(min(fitness))
-        average_fitness.append(sum(fitness) / len(fitness))
-        median_fitness.append(sorted(fitness)[len(fitness) // 2])
-
-        update_plot()
+            plt.pause(0.1)
 
     # Save the best player of the generation
     NN_MODEL_GENETIC_PATH.mkdir(exist_ok=True)

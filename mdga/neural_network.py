@@ -157,9 +157,7 @@ class NeuralNetworkPlayer(Player):
 
         for _ in range(games):
             game = play_game(self)
-
-            if game.play() == self:
-                score += 1
+            winner = game.play()
 
             # Add 0.25 extra score for each piece that we managed to get into the target area
             # This means that we get 2 points if we win and < 1 for any game we didn't win
@@ -167,6 +165,9 @@ class NeuralNetworkPlayer(Player):
             # encourage actually winning the game
             id = game.players.index(self)
             score += len(game.board.filter(id=id, state=PieceState.target)) / PIECES_PER_PLAYER
+
+            if winner == self:
+                score += 1
 
         # NOTE: Should the fitness also include how long the game lasted?
         # We don't really care about the number of turns, but it could be a good indicator
