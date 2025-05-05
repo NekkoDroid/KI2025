@@ -29,20 +29,23 @@ class NeuralNetwork(nn.Sequential):
             Unsqueeze(dim=1), # Add channel dimension
             nn.Conv2d(
                 in_channels=1,
-                out_channels=32,
+                out_channels=64,
                 # Combine all features down to 1 and take into account all posssible move distances
                 kernel_size=(BOARD_STATE_FEATURES, MAX_MOVE_DISTANCE),
                 padding=(0, MAX_MOVE_DISTANCE // 2),
-                padding_mode="circular"
+                padding_mode="circular",
             ),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
+            nn.Dropout(0.2),
             nn.Conv2d(
-                in_channels=32,
-                out_channels=64,
+                in_channels=64,
+                out_channels=128,
                 kernel_size=(1, MAX_MOVE_DISTANCE),
                 padding=(0, MAX_MOVE_DISTANCE // 2),
-                padding_mode="circular"
+                padding_mode="circular",
             ),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             # Downsample to half the width
             nn.MaxPool2d(
@@ -50,7 +53,10 @@ class NeuralNetwork(nn.Sequential):
                 stride=(1, 2),
             ),
             nn.Flatten(),
-            nn.Linear((BOARD_STATE_POSITIONS // 2) * 64, 128),
+            nn.Linear((BOARD_STATE_POSITIONS // 2) * 128, 256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, 128),
             nn.ReLU(),
             nn.Linear(128, PIECES_PER_PLAYER),
             nn.Softmax(dim=-1),
