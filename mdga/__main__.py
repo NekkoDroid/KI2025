@@ -49,6 +49,9 @@ def main() -> None:
     average_fitness: list[float] = list()
     median_fitness: list[float] = list()
 
+    STAGNATION_THRESHOLD = 0.02
+    STAGNATION_PATIENCE = 300
+
     fig, (plot1, plot2) = plt.subplots(ncols=2)
 
     def update_plot() -> None:
@@ -61,11 +64,14 @@ def main() -> None:
             plot1.plot(averages[player], label=str(player))
 
         if averages:
+            plot_min = min(map(len, averages.values()))
+            plot_min = max(0, plot_min - STAGNATION_PATIENCE) # Show X of the previous values
+
+            plot_max = max(map(len, averages.values()))
+            plot_max = max(1, plot_max + (plot_max - plot_min) * 0.1) # Show 10% forwards
+
             plot1.set_ylim(0, 1)
-            plot1.set_xlim(
-                min(map(len, averages.values())) * 0.9,
-                max(map(len, averages.values())) * 1.1,
-            )
+            plot1.set_xlim(plot_min, plot_max)
 
         plot1.legend()
         plot1.grid()
@@ -105,8 +111,6 @@ def main() -> None:
         for player in game.players:
             player.decisions.clear()
 
-        STAGNATION_THRESHOLD = 0.02
-        STAGNATION_PATIENCE = 300
         if has_stagnated(averages[nn_player], STAGNATION_THRESHOLD, STAGNATION_PATIENCE):
             break
 
