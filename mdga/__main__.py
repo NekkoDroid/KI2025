@@ -1,5 +1,6 @@
 from concurrent import futures
 from contextlib import contextmanager
+import itertools
 from pathlib import Path
 from random import Random
 import sys
@@ -15,8 +16,8 @@ from mdga.neural_network import NeuralNetworkPlayer, NeuralNetworkPopulation
 from mdga.player import FurthestPlayer, KnockoutPlayer, NearestPlayer, RandomPlayer, Player, SmartPlayer
 
 
-NN_MODEL_SUPERVISED_PATH = Path("./mdga-supervised.pt")
-NN_MODEL_GENETIC_PATH = Path("./mdga-genetic.pt")
+NN_MODELS_DIR = Path("./models/")
+NN_GENETIC_DIR = Path("./mdga-genetic.pt")
 
 
 @contextmanager
@@ -41,8 +42,13 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     nn_player = NeuralNetworkPlayer(device, random)
-    if NN_MODEL_SUPERVISED_PATH.exists():
-        nn_player.load(NN_MODEL_SUPERVISED_PATH)
+
+    NN_MODELS_DIR.mkdir(exist_ok=True)
+    if models := sorted(NN_MODELS_DIR.glob("*.pt"), key=lambda file: int(file.stem)):
+        nn_player.load(models[-1])
+
+    for model in NN_MODELS_DIR.iterdir():
+        model.unlink()
 
     PLAYER_TYPES: list[Player] = [
         nn_player,
@@ -70,7 +76,12 @@ def main() -> None:
 
     STAGNATION_PATIENCE = 300
 
-    fig, (plot1, plot2) = plt.subplots(ncols=2)
+    fig = plt.figure(figsize=(20, 12))
+    (plot1, plot2) = fig.subplots(ncols=2)
+
+    def save(iter: int) -> None:
+        fig.savefig(NN_MODELS_DIR / f"{iter}.svg")
+        nn_player.save(NN_MODELS_DIR / f"{iter}.pt")
 
     def update_plot() -> None:
         plot1.clear()
@@ -109,8 +120,11 @@ def main() -> None:
 
         fig.tight_layout()
 
+    iter = 1
+    for iter in itertools.count(start=iter):
+        if not plt.fignum_exists(fig.number):
+            break
 
-    while plt.fignum_exists(fig.number):
         game = Game(
             *random.sample(PLAYER_TYPES, k=4),
             random=random,
@@ -129,11 +143,16 @@ def main() -> None:
         for player in game.players:
             player.decisions.clear()
 
+        if iter % 100 == 0:
+            save(iter)
+
         #STAGNATION_THRESHOLD = 0.01
         #if has_stagnated(averages[nn_player], STAGNATION_THRESHOLD, STAGNATION_PATIENCE):
         #    break
 
-    nn_player.save(NN_MODEL_SUPERVISED_PATH)
+    save(iter)
+    if not plt.fignum_exists(fig.number):
+        return
 
     POPULATION_SIZE = 32
     MUTATION_RATE = 0.1
@@ -144,7 +163,11 @@ def main() -> None:
         player.mutate(MUTATION_RATE)
 
     with futures.ThreadPoolExecutor() as executor:
-        while plt.fignum_exists(fig.number):
+        iter = 1
+        for iter in itertools.count(start=iter):
+            if not plt.fignum_exists(fig.number):
+                break
+
             def play_randoms(player: NeuralNetworkPlayer) -> Game:
                 game = Game(
                     player,
@@ -185,9 +208,9 @@ def main() -> None:
                 population.next_generation(fitness, MUTATION_RATE)
 
     # Save the best player of the generation
-    NN_MODEL_GENETIC_PATH.mkdir(exist_ok=True)
+    NN_GENETIC_DIR.mkdir(exist_ok=True)
     for i, player in enumerate(population.population):
-        player.save(NN_MODEL_GENETIC_PATH / f"{i}.pt")
+        player.save(NN_GENETIC_DIR / f"{i}.pt")
 
 
 if __name__ == "__main__":
