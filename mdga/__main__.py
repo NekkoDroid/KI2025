@@ -62,41 +62,38 @@ def main() -> None:
     average_fitness: list[float] = list()
     median_fitness: list[float] = list()
 
+    best_winrate: list[float] = list()
+    worst_winrate: list[float] = list()
+    average_winrate: list[float] = list()
+    median_winrate: list[float] = list()
+
     STAGNATION_PATIENCE = 300
 
     fig, (plot1, plot2) = plt.subplots(ncols=2)
 
     def update_plot() -> None:
         plot1.clear()
-        plot1.set_title("Average winrate of players")
-        plot1.set_xlabel("Games played")
-        plot1.set_ylabel("Winrate")
+        plot1.set_title("Fitness of each generation")
+        plot1.set_xlabel("Generation")
+        plot1.set_ylabel("Fitness")
 
-        for player in PLAYER_TYPES:
-            plot1.plot(averages[player], label=str(player))
-
-        if averages:
-            plot_min = min(map(len, averages.values()))
-            plot_min = max(0, plot_min - STAGNATION_PATIENCE) # Show X of the previous values
-
-            plot_max = max(map(len, averages.values()))
-            plot_max = max(1, plot_max + (plot_max - plot_min) * 0.1) # Show 10% forwards
-
-            plot1.set_ylim(0, 1)
-            plot1.set_xlim(plot_min, plot_max)
+        plot1.plot(best_fitness, label="Best fitness")
+        plot1.plot(worst_fitness, label="Worst fitness")
+        plot1.plot(average_fitness, label="Average fitness")
+        plot1.plot(median_fitness, label="Median fitness")
 
         plot1.legend()
         plot1.grid()
 
         plot2.clear()
-        plot2.set_title("Fitness of each generation")
+        plot2.set_title("Winrate of each generation")
         plot2.set_xlabel("Generation")
-        plot2.set_ylabel("Fitness")
+        plot2.set_ylabel("Winrate")
 
-        plot2.plot(best_fitness, label="Best fitness")
-        plot2.plot(worst_fitness, label="Worst fitness")
-        plot2.plot(average_fitness, label="Average fitness")
-        plot2.plot(median_fitness, label="Median fitness")
+        plot2.plot(best_winrate, label="Best winrate")
+        plot2.plot(worst_winrate, label="Worst winrate")
+        plot2.plot(average_winrate, label="Average winrate")
+        plot2.plot(median_winrate, label="Median winrate")
 
         plot2.legend()
         plot2.grid()
@@ -105,6 +102,7 @@ def main() -> None:
 
 
     while plt.fignum_exists(fig.number):
+        break
         game = Game(
             *random.sample(PLAYER_TYPES, k=4),
             random=random,
@@ -129,7 +127,7 @@ def main() -> None:
 
     nn_player.save(NN_MODEL_SUPERVISED_PATH)
 
-    POPULATION_SIZE = 20
+    POPULATION_SIZE = 32
     MUTATION_RATE = 0.1
 
     population = NeuralNetworkPopulation(POPULATION_SIZE, device, random)
@@ -139,29 +137,33 @@ def main() -> None:
 
     with futures.ThreadPoolExecutor() as executor:
         while plt.fignum_exists(fig.number):
-            def play_game(player: NeuralNetworkPlayer) -> Game:
+            def play_randoms(player: NeuralNetworkPlayer) -> Game:
                 game = Game(
                     player,
-                    *random.sample(PLAYER_TYPES[1:], k=3),
+                    *random.sample(PLAYER_TYPES, k=3),
                     random=random,
                 )
-
                 game.play()
+
                 for p in game.players:
                     p.decisions.clear()
 
                 return game
 
             FITNESS_AVERAGE = 100
-            def determine_fitness(player: NeuralNetworkPlayer) -> float:
-                return player.fitness(play_game, FITNESS_AVERAGE)
+            with print_duration("Determining performance took {} seconds"):
+                winrate = population.evaluate(play_randoms, FITNESS_AVERAGE, executor)
+
+            best_winrate.append(max(winrate))
+            worst_winrate.append(min(winrate))
+            average_winrate.append(sum(winrate) / len(winrate))
+            median_winrate.append(sorted(winrate)[len(winrate) // 2])
+
+            update_plot()
+            plt.pause(1)
 
             with print_duration("Determing fitness took {} seconds"):
-                fitness = list(executor.map(determine_fitness, population.population))
-                #fitness = list(map(determine_fitness, population.population))
-
-            with print_duration("Creating new generation took {} seconds"):
-                population.next_generation(fitness, MUTATION_RATE)
+                fitness = population.fitnesses(FITNESS_AVERAGE, executor)
 
             best_fitness.append(max(fitness))
             worst_fitness.append(min(fitness))
@@ -169,7 +171,10 @@ def main() -> None:
             median_fitness.append(sorted(fitness)[len(fitness) // 2])
 
             update_plot()
-            plt.pause(0.1)
+            plt.pause(1)
+
+            with print_duration("Creating new generation took {} seconds"):
+                population.next_generation(fitness, MUTATION_RATE)
 
     # Save the best player of the generation
     NN_MODEL_GENETIC_PATH.mkdir(exist_ok=True)

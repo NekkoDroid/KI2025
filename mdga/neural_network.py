@@ -1,12 +1,15 @@
+from collections import Counter
+from concurrent import futures
+import itertools
 from pathlib import Path
 from random import Random
-from typing import Callable
+from typing import Callable, cast
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from mdga.board import MAX_ROLL, PIECES_PER_PLAYER, Board, Piece, PieceState
+from mdga.board import MAX_PLAYERS, MAX_ROLL, PIECES_PER_PLAYER, Board, Piece, PieceState
 from mdga.game import Game
 from mdga.player import BOARD_STATE_FEATURES, BOARD_STATE_POSITIONS, Player
 
@@ -105,7 +108,7 @@ class NeuralNetworkPlayer(Player):
     def load(self, path: str | Path) -> None:
         self.network.load_state_dict(torch.load(path))
 
-    def learn(self, training_data: list[tuple[np.ndarray, int]]) -> None:
+    def learn(self, training_data: list[tuple[np.ndarray, int]]) -> float:
         self.network.train()
 
         states, targets = zip(*training_data)
@@ -126,11 +129,14 @@ class NeuralNetworkPlayer(Player):
             ) for target in targets
         ])
 
+        outputs: torch.Tensor = self.network(states)
+        loss: torch.Tensor = self.criterion(outputs, targets)
+
         self.optimizer.zero_grad()
-        outputs = self.network(states)
-        loss = self.criterion(outputs, targets)
         loss.backward()
         self.optimizer.step()
+
+        return loss.item()
 
     def mutate(self, mutation_rate: float) -> None:
         state = self.network.state_dict()
@@ -152,29 +158,6 @@ class NeuralNetworkPlayer(Player):
         child.network.load_state_dict(state)
         return child
 
-    def fitness(self, play_game: Callable[["NeuralNetworkPlayer"], Game], games: int) -> float:
-        score: float = 0
-
-        for _ in range(games):
-            game = play_game(self)
-            winner = game.play()
-
-            # Add 0.25 extra score for each piece that we managed to get into the target area
-            # This means that we get 2 points if we win and < 1 for any game we didn't win
-            # we want to encourage that we get pieces into the target area, but we want to majorly
-            # encourage actually winning the game
-            id = game.players.index(self)
-            score += len(game.board.filter(id=id, state=PieceState.target)) / PIECES_PER_PLAYER
-
-            if winner == self:
-                score += 1
-
-        # NOTE: Should the fitness also include how long the game lasted?
-        # We don't really care about the number of turns, but it could be a good indicator
-        # Same for how many pieces are in the target area?
-
-        return score / games
-
 
 class NeuralNetworkPopulation:
     device: torch.device
@@ -184,6 +167,7 @@ class NeuralNetworkPopulation:
     def __init__(self, population: int, device: torch.device, random: Random = Random()) -> None:
         self.device = device
         self.random = random
+        assert population % MAX_PLAYERS == 0  # Ensure that we can fill a game with players
         self.population = [NeuralNetworkPlayer(device, random) for _ in range(population)]
 
     def __len__(self) -> int:
@@ -221,3 +205,40 @@ class NeuralNetworkPopulation:
             self.population.append(child)
 
         assert len(self.population) == population_size
+
+    def evaluate(self, play_game: Callable[[NeuralNetworkPlayer], Game], games: int, executor: futures.Executor) -> list[float]:
+        def play_games(player: NeuralNetworkPlayer) -> float:
+            wins = 0
+
+            for _ in range(games):
+                if play_game(player).play() == player:
+                    wins += 1
+
+            return wins / games
+
+        return list(executor.map(play_games, self.population))
+
+    def fitnesses(self, games: int, executor: futures.Executor) -> list[float]:
+        wins = Counter()
+        population = list(self.population)
+
+        for _ in range(games):
+            def play_game(players: tuple[NeuralNetworkPlayer, ...]) -> NeuralNetworkPlayer:
+                game = Game(*players, random=self.random)
+                winner = game.play()
+
+                for player in game.players:
+                    player.decisions.clear()
+
+                return cast(NeuralNetworkPlayer, winner)
+
+            self.random.shuffle(population)
+            matchups = itertools.batched(population, MAX_PLAYERS)
+            winners = executor.map(play_game, matchups)
+            wins.update(winners)
+
+        fitness = [0.0] * len(self.population)
+        for i, player in enumerate(self.population):
+            fitness[i] = wins[player] / games
+
+        return fitness
