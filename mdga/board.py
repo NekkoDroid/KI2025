@@ -141,6 +141,63 @@ class Board:
 
         return newpos
 
+    def score_move(self, piece: Piece, roll: int) -> float:
+        # For now just take the distance of the opponent
+        KNOCKOUT_MULTIPLIER = 1
+        # It is less likely that we get knocked out, but we still want to account for it,
+        # so score a knockout and 3 pieces knocking us out as roughly equal
+        DANGER_MULTIPLIER = 0.3
+        # We only get out of the target area with a MAX_ROLL
+        MOVE_FROM_HOME_SCORE = MAX_ROLL
+        # If we can better fill up the end of the target area
+        MOVE_IN_TARGET_SCORE = 2
+        # If we can move into the target area we should prefer that over moving inside it
+        MOVE_TO_TARGET_SCORE = MOVE_IN_TARGET_SCORE + PIECES_PER_PLAYER * 2
+
+        def position_danger_count(position: int) -> int:
+            if position < 0:
+                return 0
+
+            danger = 0
+            for i in range(MIN_ROLL, MAX_ROLL + 1):
+                for other in self.pieces:
+                    if other.id == piece.id:
+                        continue
+
+                    try:
+                        if self.simulate_move(other, i) == position:
+                            danger += 1
+
+                    except InvalidMoveError:
+                        pass
+
+            return danger
+
+        distance = self.distance(piece)
+
+        # The baseline value of a piece is how it has so far gone
+        score = distance
+
+        if (simulated_position := self.simulate_move(piece, roll)) >= 0:
+
+            for other in self.filter(position=simulated_position):
+                score += self.distance(other) * KNOCKOUT_MULTIPLIER
+
+            # If the simulated position is under threat we want to discourage moving there
+            score -= distance * position_danger_count(simulated_position) * DANGER_MULTIPLIER
+
+            if piece.position is None:
+                score += MOVE_FROM_HOME_SCORE
+            else:
+                # If the current position is under threat we want to encourage moving from it
+                score += distance * position_danger_count(piece.position) * DANGER_MULTIPLIER
+
+        else:
+            assert piece.position is not None
+            score += MOVE_IN_TARGET_SCORE if piece.position < 0 else MOVE_TO_TARGET_SCORE
+
+        return score
+
     def move(self, piece: Piece, roll: int) -> None:
         newpos = self.simulate_move(piece, roll)
 
