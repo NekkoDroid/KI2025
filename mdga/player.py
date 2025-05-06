@@ -6,6 +6,7 @@ import numpy as np
 from mdga.board import (
     MAX_PLAYERS,
     MAX_ROLL,
+    MIN_ROLL,
     PIECES_PER_PLAYER,
     TRANSIT_FIELDS,
     Board,
@@ -155,3 +156,65 @@ class KnockoutPlayer(Player):
         except IndexError:
             return self.parent.select_move(board, id, roll, valid_moves)
 
+
+class SmartPlayer(Player):
+    def select_move(self, board: Board, id: int, roll: int, pieces: tuple[Piece, ...]) -> Piece:
+        # For now just take the distance of the opponent
+        KNOCKOUT_MULTIPLIER = 1
+        # It is less likely that we get knocked out, but we still want to account for it,
+        # so score a knockout and 3 pieces knocking us out as roughly equal
+        DANGER_MULTIPLIER = 0.3
+        # We only get out of the target area with a MAX_ROLL
+        MOVE_FROM_HOME_SCORE = MAX_ROLL
+        # If we can better fill up the end of the target area
+        MOVE_IN_TARGET_SCORE = 2
+        # If we can move into the target area we should prefer that over moving inside it
+        MOVE_TO_TARGET_SCORE = MOVE_IN_TARGET_SCORE + PIECES_PER_PLAYER * 2
+
+        def position_danger_count(position: int) -> int:
+            if position < 0:
+                return 0
+
+            danger = 0
+            for i in range(MIN_ROLL, MAX_ROLL + 1):
+                for piece in board.pieces:
+                    if piece.id == id:
+                        continue
+
+                    try:
+                        if board.simulate_move(piece, i) == position:
+                            danger += 1
+
+                    except InvalidMoveError:
+                        pass
+
+            return danger
+
+        if not (valid_moves := self.valid_moves(board, roll, pieces)):
+            raise LookupError("No valid moves")
+
+        if len(valid_moves) == 1:
+            return valid_moves[0]
+
+        # The baseline value of a piece is how it has so far gone
+        piece_values = {piece: float(board.distance(piece)) + roll for piece in valid_moves}
+
+        for piece in valid_moves:
+            if (simulated_position := board.simulate_move(piece, roll)) >= 0:
+                for other in board.filter(position=simulated_position):
+                    piece_values[piece] += board.distance(other) * KNOCKOUT_MULTIPLIER
+
+            # If the simulated position is under threat we want to discourage moving there
+            piece_values[piece] -= board.distance(piece) * position_danger_count(simulated_position) * DANGER_MULTIPLIER
+
+            if piece.position is None:
+                piece_values[piece] += MOVE_FROM_HOME_SCORE
+                continue
+
+            # If the current position is under threat we want to encourage moving from it
+            piece_values[piece] += board.distance(piece) * position_danger_count(piece.position) * DANGER_MULTIPLIER
+
+            if simulated_position < 0:
+                piece_values[piece] += MOVE_IN_TARGET_SCORE if piece.position < 0 else MOVE_TO_TARGET_SCORE
+
+        return sorted(piece_values.keys(), key=lambda piece: piece_values[piece], reverse=True)[0]

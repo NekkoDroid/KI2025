@@ -12,7 +12,7 @@ import torch
 
 from mdga.game import Game
 from mdga.neural_network import NeuralNetworkPlayer, NeuralNetworkPopulation
-from mdga.player import FurthestPlayer, KnockoutPlayer, NearestPlayer, RandomPlayer, Player
+from mdga.player import FurthestPlayer, KnockoutPlayer, NearestPlayer, RandomPlayer, Player, SmartPlayer
 
 
 NN_MODEL_SUPERVISED_PATH = Path("./mdga-supervised.pt")
@@ -52,6 +52,7 @@ def main() -> None:
         KnockoutPlayer(FurthestPlayer()),
         KnockoutPlayer(NearestPlayer()),
         KnockoutPlayer(RandomPlayer(random)),
+        SmartPlayer(),
     ]
 
     histories: dict[Player, deque[bool]] = {player: deque(maxlen=1000) for player in PLAYER_TYPES}
@@ -73,27 +74,35 @@ def main() -> None:
 
     def update_plot() -> None:
         plot1.clear()
-        plot1.set_title("Fitness of each generation")
-        plot1.set_xlabel("Generation")
-        plot1.set_ylabel("Fitness")
+        plot1.set_title("Average winrate of players")
+        plot1.set_xlabel("Games played")
+        plot1.set_ylabel("Winrate")
 
-        plot1.plot(best_fitness, label="Best fitness")
-        plot1.plot(worst_fitness, label="Worst fitness")
-        plot1.plot(average_fitness, label="Average fitness")
-        plot1.plot(median_fitness, label="Median fitness")
+        for player in PLAYER_TYPES:
+            plot1.plot(averages[player], label=str(player))
+
+        if averages:
+            plot_min = min(map(len, averages.values()))
+            plot_min = max(0, plot_min - STAGNATION_PATIENCE) # Show X of the previous values
+
+            plot_max = max(map(len, averages.values()))
+            plot_max = max(1, plot_max + (plot_max - plot_min) * 0.1) # Show 10% forwards
+
+            plot1.set_ylim(0, 1)
+            plot1.set_xlim(plot_min, plot_max)
 
         plot1.legend()
         plot1.grid()
 
         plot2.clear()
-        plot2.set_title("Winrate of each generation")
+        plot2.set_title("Fitness of each generation")
         plot2.set_xlabel("Generation")
-        plot2.set_ylabel("Winrate")
+        plot2.set_ylabel("Fitness")
 
-        plot2.plot(best_winrate, label="Best winrate")
-        plot2.plot(worst_winrate, label="Worst winrate")
-        plot2.plot(average_winrate, label="Average winrate")
-        plot2.plot(median_winrate, label="Median winrate")
+        plot2.plot(best_fitness, label="Best fitness")
+        plot2.plot(worst_fitness, label="Worst fitness")
+        plot2.plot(average_fitness, label="Average fitness")
+        plot2.plot(median_fitness, label="Median fitness")
 
         plot2.legend()
         plot2.grid()
@@ -102,7 +111,6 @@ def main() -> None:
 
 
     while plt.fignum_exists(fig.number):
-        break
         game = Game(
             *random.sample(PLAYER_TYPES, k=4),
             random=random,
@@ -121,9 +129,9 @@ def main() -> None:
         for player in game.players:
             player.decisions.clear()
 
-        STAGNATION_THRESHOLD = 0.01
-        if has_stagnated(averages[nn_player], STAGNATION_THRESHOLD, STAGNATION_PATIENCE):
-            break
+        #STAGNATION_THRESHOLD = 0.01
+        #if has_stagnated(averages[nn_player], STAGNATION_THRESHOLD, STAGNATION_PATIENCE):
+        #    break
 
     nn_player.save(NN_MODEL_SUPERVISED_PATH)
 

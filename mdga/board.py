@@ -33,6 +33,9 @@ class Piece:
     def __str__(self) -> str:
         return str(self.id)
 
+    def __hash__(self) -> int:
+        return hash((self.id, self.position))
+
     @property
     def state(self) -> PieceState:
         if self.position is None:
