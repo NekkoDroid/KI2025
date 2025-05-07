@@ -142,11 +142,11 @@ class Board:
         return newpos
 
     def score_move(self, piece: Piece, roll: int) -> float:
-        # For now just take the distance of the opponent
-        KNOCKOUT_MULTIPLIER = 1
+        # For now just take the distance of the target and multiply it by a constant
+        KNOCKOUT_MULTIPLIER = 10
         # It is less likely that we get knocked out, but we still want to account for it,
         # so score a knockout and 3 pieces knocking us out as roughly equal
-        DANGER_MULTIPLIER = 0.3
+        DANGER_MULTIPLIER = 3
         # We only get out of the target area with a MAX_ROLL
         MOVE_FROM_HOME_SCORE = MAX_ROLL
         # If we can better fill up the end of the target area
