@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from mdga.board import MAX_PLAYERS, MAX_ROLL, PIECES_PER_PLAYER, Board, Piece, PieceState
 from mdga.game import Game
-from mdga.player import BOARD_STATE_FEATURES, BOARD_STATE_POSITIONS, Player
+from mdga.player import BOARD_STATE_FEATURES, MOVE_STATE_SIZE, Player
 
 
 class Unsqueeze(nn.Module):
@@ -26,41 +26,12 @@ class Unsqueeze(nn.Module):
 
 class NeuralNetwork(nn.Sequential):
     def __init__(self) -> None:
-        # We need more than MAX_ROLL since home and target fields are interleaved into the fields
-        MAX_MOVE_DISTANCE = MAX_ROLL + PIECES_PER_PLAYER * 2 + 1
-
         super().__init__(
-            Unsqueeze(dim=1), # Add channel dimension
-            nn.Conv2d(
-                in_channels=1,
-                out_channels=64,
-                # Combine all features down to 1 and take into account all posssible move distances
-                kernel_size=(BOARD_STATE_FEATURES, MAX_MOVE_DISTANCE),
-                padding=(0, MAX_MOVE_DISTANCE // 2),
-                padding_mode="circular",
-            ),
-            nn.BatchNorm2d(64),
+            nn.Linear(MOVE_STATE_SIZE, 16384),
             nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Conv2d(
-                in_channels=64,
-                out_channels=128,
-                kernel_size=(1, MAX_MOVE_DISTANCE),
-                padding=(0, MAX_MOVE_DISTANCE // 2),
-                padding_mode="circular",
-            ),
-            nn.BatchNorm2d(128),
+            nn.Linear(16384, 4096),
             nn.ReLU(),
-            # Downsample to half the width
-            nn.MaxPool2d(
-                kernel_size=(1, 2),
-                stride=(1, 2),
-            ),
-            nn.Flatten(),
-            nn.Linear((BOARD_STATE_POSITIONS // 2) * 128, 256),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(256, 128),
+            nn.Linear(4096, 128),
             nn.ReLU(),
             nn.Linear(128, PIECES_PER_PLAYER),
             nn.Softmax(dim=-1),

@@ -18,6 +18,9 @@ TARGET_ENTRANCE: list[int] = [39, 9, 19, 29]
 # How many transit field count
 TRANSIT_FIELDS: int = 40
 
+# Total fields count
+TOTAL_FIELDS = TRANSIT_FIELDS + MAX_PLAYERS * PIECES_PER_PLAYER * 2
+
 
 class PieceState(enum.StrEnum):
     home = enum.auto()
