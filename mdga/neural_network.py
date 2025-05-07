@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 
 from mdga.board import MAX_PLAYERS, MAX_ROLL, PIECES_PER_PLAYER, Board, Piece, PieceState
 from mdga.game import Game
@@ -71,23 +72,23 @@ class NeuralNetworkPlayer(Player):
     random: Random
     network: nn.Module
     optimizer: optim.Optimizer
-    criterion: nn.Module
+    lossfunc: nn.Module
 
     def __init__(self, device: torch.device, random: Random = Random()) -> None:
         super().__init__()
         self.device = device
         self.random = random
         self.network = NeuralNetwork().to(self.device)
-        self.optimizer = optim.Adam(self.network.parameters(), lr=0.001)
-        self.criterion = nn.CrossEntropyLoss().to(self.device)
+        self.optimizer = optim.SGD(self.network.parameters(), lr=0.01, momentum=0.95)
+        self.lossfunc = nn.BCELoss().to(self.device)
 
+    @torch.inference_mode()
     def select_move(self, board: Board, id: int, roll: int, pieces: tuple[Piece, ...]) -> Piece:
         state = self.encode_move(board, id, roll)
         state = torch.tensor(np.array([state]), dtype=torch.float32, device=self.device)
 
         self.network.eval()
-        with torch.no_grad():
-            probabilities = self.network(state)
+        probabilities = self.network(state)
 
         assert len(probabilities) == 1
         probabilities = probabilities[0]
@@ -108,10 +109,8 @@ class NeuralNetworkPlayer(Player):
     def load(self, path: str | Path) -> None:
         self.network.load_state_dict(torch.load(path))
 
-    def learn(self, training_data: list[tuple[np.ndarray, int]]) -> float:
-        self.network.train()
-
-        states, targets = zip(*training_data)
+    def split_data(self, data: list[tuple[np.ndarray, int]]) -> tuple[torch.Tensor, torch.Tensor]:
+        states, targets = zip(*data)
 
         states = torch.stack([
             torch.tensor(
@@ -129,14 +128,42 @@ class NeuralNetworkPlayer(Player):
             ) for target in targets
         ])
 
-        outputs: torch.Tensor = self.network(states)
-        loss: torch.Tensor = self.criterion(outputs, targets)
+        return states, targets
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+    def train(self, training_data: list[tuple[np.ndarray, int]], batch_size: int = 32) -> float:
+        states, targets = self.split_data(training_data)
+        dataset = TensorDataset(states, targets)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-        return loss.item()
+        self.network.train()
+        total_loss = 0.0
+
+        for states, targets in dataloader:
+            outputs: torch.Tensor = self.network(states)
+            loss: torch.Tensor = self.lossfunc(outputs, targets)
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            total_loss += loss.item()
+            self.optimizer.step()
+
+        return total_loss / len(dataloader)
+
+    @torch.inference_mode()
+    def test(self, test_data: list[tuple[np.ndarray, int]], batch_size: int = 32) -> float:
+        states, targets = self.split_data(test_data)
+        dataset = TensorDataset(states, targets)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+        self.network.eval()
+        total_loss = 0.0
+
+        for states, targets in dataloader:
+            outputs: torch.Tensor = self.network(states)
+            loss: torch.Tensor = self.lossfunc(outputs, targets)
+            total_loss += loss.item()
+
+        return total_loss / len(dataloader)
 
     def mutate(self, mutation_rate: float) -> None:
         state = self.network.state_dict()
