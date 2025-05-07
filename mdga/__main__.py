@@ -44,12 +44,11 @@ def main() -> None:
 
     nn_player = NeuralNetworkPlayer(device, random)
 
-    NN_MODELS_DIR.mkdir(exist_ok=True)
     if models := sorted(NN_MODELS_DIR.glob("*.pt"), key=lambda file: int(file.stem)):
         nn_player.load(models[-1])
 
-    for model in NN_MODELS_DIR.iterdir():
-        model.unlink()
+    for file in NN_MODELS_DIR.glob("*"):
+        file.unlink()
 
     PLAYER_TYPES: list[Player] = [
         nn_player,
@@ -84,6 +83,7 @@ def main() -> None:
     (plot1, plot2) = fig.subplots(ncols=2)
 
     def save(iter: int) -> None:
+        NN_MODELS_DIR.mkdir(exist_ok=True)
         fig.savefig(NN_MODELS_DIR / f"{iter}.svg")
         nn_player.save(NN_MODELS_DIR / f"{iter}.pt")
 
