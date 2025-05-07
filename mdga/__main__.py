@@ -140,11 +140,9 @@ def main() -> None:
             )
 
             winner = game.play()
+            game_decisions += winner.decisions
 
             for player in game.players:
-                if isinstance(player, SmartPlayer):
-                    game_decisions += player.decisions
-
                 histories[player].append(winner == player)
                 averages[player].append(sum(histories[player]) / len(histories[player]))
                 player.decisions.clear()
