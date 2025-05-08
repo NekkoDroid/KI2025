@@ -51,7 +51,7 @@ class NeuralNetworkPlayer(Player):
         self.random = random
         self.network = NeuralNetwork().to(self.device)
         self.optimizer = optim.SGD(self.network.parameters(), lr=0.01, momentum=0.95)
-        self.lossfunc = nn.BCELoss().to(self.device)
+        self.lossfunc = nn.CrossEntropyLoss().to(self.device)
 
     @torch.inference_mode()
     def select_move(self, board: Board, id: int, roll: int, pieces: tuple[Piece, ...]) -> Piece:
