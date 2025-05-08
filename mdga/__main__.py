@@ -6,6 +6,8 @@ from random import Random
 import sys
 import time
 from typing import Callable, Iterator
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from collections import deque
 
@@ -17,8 +19,11 @@ from mdga.neural_network import NeuralNetworkPlayer, NeuralNetworkPopulation
 from mdga.player import FurthestPlayer, KnockoutPlayer, NearestPlayer, RandomPlayer, Player, SmartPlayer
 
 
-NN_MODELS_DIR = Path("./models/")
-NN_GENETIC_DIR = Path("./mdga-genetic.pt")
+random = Random()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+NN_SUPERVISED_DIR = Path("./models-supervised/")
+NN_GENETIC_DIR = Path("./models-genetic/")
 
 
 @contextmanager
@@ -38,19 +43,26 @@ def has_stagnated(history: list[float], threshold: float, patience: int = 1000) 
     return (max(recent_performance) - min(recent_performance)) < threshold
 
 
-def main() -> None:
-    random = Random()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def make_plots() -> tuple[Figure, tuple[Axes, Axes]]:
+    fig = plt.figure(figsize=(20, 12))
+    return fig, tuple(fig.subplots(ncols=2))
+
+
+def train_supervised() -> None:
+    STAGNATION_PATIENCE = 300
+    GAMES_PER_GENERATION = 1000
 
     nn_player = NeuralNetworkPlayer(device, random)
 
-    if models := sorted(NN_MODELS_DIR.glob("*.pt"), key=lambda file: int(file.stem)):
+    if models := sorted(NN_SUPERVISED_DIR.glob("*.pt"), key=lambda file: int(file.stem)):
         nn_player.load(models[-1])
 
-    for file in NN_MODELS_DIR.glob("*"):
-        file.unlink()
+    def save(epoch: int) -> None:
+        NN_SUPERVISED_DIR.mkdir(exist_ok=True, parents=True)
+        fig.savefig(NN_SUPERVISED_DIR / f"{epoch}.svg")
+        nn_player.save(NN_SUPERVISED_DIR / f"{epoch}.pt")
 
-    PLAYER_TYPES: list[Player] = [
+    PLAYERS: list[Player] = [
         nn_player,
         FurthestPlayer(),
         NearestPlayer(),
@@ -61,39 +73,20 @@ def main() -> None:
         SmartPlayer(),
     ]
 
-    histories: dict[Player, deque[bool]] = {player: deque(maxlen=1000) for player in PLAYER_TYPES}
-    averages: dict[Player, list[float]] = {player: list() for player in PLAYER_TYPES}
-
-    best_fitness: list[float] = list()
-    worst_fitness: list[float] = list()
-    average_fitness: list[float] = list()
-    median_fitness: list[float] = list()
-
-    best_winrate: list[float] = list()
-    worst_winrate: list[float] = list()
-    average_winrate: list[float] = list()
-    median_winrate: list[float] = list()
+    histories: dict[Player, deque[bool]] = {player: deque(maxlen=1000) for player in PLAYERS}
+    averages: dict[Player, list[float]] = {player: list() for player in PLAYERS}
 
     training_losses: list[float] = list()
     testing_losses: list[float] = list()
 
-    STAGNATION_PATIENCE = 300
-
-    fig = plt.figure(figsize=(20, 12))
-    (plot1, plot2) = fig.subplots(ncols=2)
-
-    def save(iter: int) -> None:
-        NN_MODELS_DIR.mkdir(exist_ok=True)
-        fig.savefig(NN_MODELS_DIR / f"{iter}.svg")
-        nn_player.save(NN_MODELS_DIR / f"{iter}.pt")
-
-    def update_plot() -> None:
+    fig, (plot1, plot2) = make_plots()
+    def update_plots() -> None:
         plot1.clear()
         plot1.set_title("Average winrate of players")
         plot1.set_xlabel("Games played")
         plot1.set_ylabel("Winrate")
 
-        for player in PLAYER_TYPES:
+        for player in PLAYERS:
             plot1.plot(averages[player], label=str(player))
 
         if averages:
@@ -122,20 +115,17 @@ def main() -> None:
 
         fig.tight_layout()
 
-    epoch = 1
-    for epoch in itertools.count(start=epoch):
+    for epoch in itertools.count():
         if not plt.fignum_exists(fig.number):
             break
 
         game_decisions: list[tuple[np.ndarray, int]] = list()
-        GAMES_PER_GENERATION = 1000
-
         for game_index in range(GAMES_PER_GENERATION):
             if not plt.fignum_exists(fig.number):
                 break
 
             game = Game(
-                *random.sample(PLAYER_TYPES, k=4),
+                *random.sample(PLAYERS, k=4),
                 random=random,
             )
 
@@ -147,7 +137,7 @@ def main() -> None:
                 averages[player].append(sum(histories[player]) / len(histories[player]))
                 player.decisions.clear()
 
-            update_plot()
+            update_plots()
             plt.pause(0.01)
 
         game_decisions_count = len(game_decisions)
@@ -166,36 +156,88 @@ def main() -> None:
             f"Testing loss: {testing_loss}",
         ]))
 
-        update_plot()
+        update_plots()
         plt.pause(0.01)
         save(epoch)
 
-        #STAGNATION_THRESHOLD = 0.01
-        #if has_stagnated(averages[nn_player], STAGNATION_THRESHOLD, STAGNATION_PATIENCE):
-        #    break
 
-    save(epoch)
-    if not plt.fignum_exists(fig.number):
-        return
-
+def train_genetic() -> None:
     POPULATION_SIZE = 32
     MUTATION_RATE = 0.1
+    FITNESS_AVERAGE = 100
 
-    population = NeuralNetworkPopulation(POPULATION_SIZE, device, random)
-    for player in population:
-        player.network.load_state_dict(nn_player.network.state_dict())
-        player.mutate(MUTATION_RATE)
+    nn_population = NeuralNetworkPopulation(POPULATION_SIZE, device, random)
+
+    for i, file in enumerate(NN_GENETIC_DIR.glob("*.pt")):
+        nn_population[i].load(file)
+
+    def save(epoch: int) -> None:
+        (dir := NN_GENETIC_DIR / str(epoch)).mkdir(exist_ok=True, parents=True)
+
+        fig.savefig(dir / f"fig.svg")
+        for i, player in enumerate(nn_population.population):
+            player.save(dir / f"{i}.pt")
+
+    PLAYERS: list[Player] = [
+        FurthestPlayer(),
+        NearestPlayer(),
+        RandomPlayer(random),
+        KnockoutPlayer(FurthestPlayer()),
+        KnockoutPlayer(NearestPlayer()),
+        KnockoutPlayer(RandomPlayer(random)),
+        SmartPlayer(),
+    ]
+
+    best_fitness: list[float] = list()
+    worst_fitness: list[float] = list()
+    average_fitness: list[float] = list()
+    median_fitness: list[float] = list()
+
+    best_winrate: list[float] = list()
+    worst_winrate: list[float] = list()
+    average_winrate: list[float] = list()
+    median_winrate: list[float] = list()
+
+    fig, (plot1, plot2) = make_plots()
+    def update_plots() -> None:
+        plot1.clear()
+        plot1.set_title("Fitness of each generation")
+        plot1.set_xlabel("Generation")
+        plot1.set_ylabel("Fitness")
+
+        plot1.plot(best_fitness, label="Best fitness")
+        plot1.plot(worst_fitness, label="Worst fitness")
+        plot1.plot(average_fitness, label="Average fitness")
+        plot1.plot(median_fitness, label="Median fitness")
+
+        plot1.legend()
+        plot1.grid()
+
+        plot2.clear()
+        plot2.set_title("Winrate of each generation")
+        plot2.set_xlabel("Generation")
+        plot2.set_ylabel("Winrate")
+
+        plot2.plot(best_winrate, label="Best winrate")
+        plot2.plot(worst_winrate, label="Worst winrate")
+        plot2.plot(average_winrate, label="Average winrate")
+        plot2.plot(median_winrate, label="Median winrate")
+
+        plot2.legend()
+        plot2.grid()
+
+        fig.tight_layout()
+
 
     with futures.ThreadPoolExecutor() as executor:
-        epoch = 1
-        for epoch in itertools.count(start=epoch):
+        for epoch in itertools.count():
             if not plt.fignum_exists(fig.number):
                 break
 
             def play_randoms(player: NeuralNetworkPlayer) -> Game:
                 game = Game(
                     player,
-                    *random.sample(PLAYER_TYPES, k=3),
+                    *random.sample(PLAYERS, k=3),
                     random=random,
                 )
                 game.play()
@@ -207,34 +249,39 @@ def main() -> None:
 
             FITNESS_AVERAGE = 100
             with print_duration("Determining performance took {} seconds"):
-                winrate = population.evaluate(play_randoms, FITNESS_AVERAGE, executor)
+                winrate = nn_population.evaluate(play_randoms, FITNESS_AVERAGE, executor)
 
             best_winrate.append(max(winrate))
             worst_winrate.append(min(winrate))
             average_winrate.append(sum(winrate) / len(winrate))
             median_winrate.append(sorted(winrate)[len(winrate) // 2])
 
-            update_plot()
+            update_plots()
             plt.pause(1)
 
             with print_duration("Determing fitness took {} seconds"):
-                fitness = population.fitnesses(FITNESS_AVERAGE, executor)
+                fitness = nn_population.fitnesses(FITNESS_AVERAGE, executor)
 
             best_fitness.append(max(fitness))
             worst_fitness.append(min(fitness))
             average_fitness.append(sum(fitness) / len(fitness))
             median_fitness.append(sorted(fitness)[len(fitness) // 2])
 
-            update_plot()
+            update_plots()
             plt.pause(1)
+            save(epoch)
 
             with print_duration("Creating new generation took {} seconds"):
-                population.next_generation(fitness, MUTATION_RATE)
+                nn_population.next_generation(fitness, MUTATION_RATE)
 
-    # Save the best player of the generation
-    NN_GENETIC_DIR.mkdir(exist_ok=True)
-    for i, player in enumerate(population.population):
-        player.save(NN_GENETIC_DIR / f"{i}.pt")
+
+def main() -> None:
+    if len(sys.argv) <= 1:
+        return train_supervised()
+
+    match sys.argv[1]:
+        case "supervised": train_supervised()
+        case "genetic": train_genetic()
 
 
 if __name__ == "__main__":
